@@ -1,22 +1,24 @@
 import asyncio
-from bilibili_api import video, Credential, favorite_list, select_client, request_settings
+from bilibili_api import favorite_list, Credential, select_client, request_settings
 from rich import print
 import os
-import json
-import random
-import glob
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
+import httpx # Import httpx
+import shutil # For saving file from response
+
+# Import database functions
+import database 
 
 load_dotenv()
 select_client("curl_cffi")
-
 request_settings.set("impersonate", "chrome136")
 
-uid = os.getenv("USESR_DEDE_USER_ID")
-save_path = f"favorite/{uid}"
 
-# 实例化 Credential 类
+uid = os.getenv("USER_DEDE_USER_ID")
+COVERS_DIR = "covers" # Define covers directory
+
+# Instantiate Credential class
 credential = Credential(
     sessdata=os.getenv("USER_SESSDATA"),
     bili_jct=os.getenv("USER_BILI_JCT"),
@@ -24,94 +26,159 @@ credential = Credential(
     ac_time_value=os.getenv("USER_AC_TIME_VALUE"),
 )
 
-async def load_favorite_list(favorite_id: int, save_dir: str) -> list[dict]:
+async def download_cover(bvid: str, cover_url: str) -> str | None:
+    """Downloads a cover image and saves it locally."""
+    if not cover_url or not cover_url.startswith("http"):
+        print(f"  [COVER SKIP] Invalid cover URL for BVID {bvid}: {cover_url}")
+        return None
+
+    # Ensure protocol is present, default to https if missing (though Bilibili URLs usually have it)
+    if cover_url.startswith("//"):
+        cover_url = "https:" + cover_url
+    
+    local_cover_filename = f"{bvid}.jpg" # Or extract extension from URL if varied
+    local_cover_path = os.path.join(COVERS_DIR, local_cover_filename)
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(cover_url, timeout=10) # Timeout for download
+            response.raise_for_status() # Raise an exception for bad status codes
+            
+            with open(local_cover_path, "wb") as f:
+                f.write(response.content)
+            print(f"  [COVER DOWNLOAD] Successfully downloaded cover for BVID {bvid} to {local_cover_path}")
+            return local_cover_path
+    except httpx.HTTPStatusError as e:
+        print(f"  [COVER ERROR] HTTP error downloading cover for BVID {bvid} ({cover_url}): {e.response.status_code} - {e.response.text[:100]}")
+    except httpx.RequestError as e:
+        print(f"  [COVER ERROR] Request error downloading cover for BVID {bvid} ({cover_url}): {e}")
+    except Exception as e:
+        print(f"  [COVER ERROR] General error downloading cover for BVID {bvid} ({cover_url}): {e}")
+    return None
+
+# fetch_all_favorite_medias remains the same as in the previous step's subtask
+
+async def fetch_all_favorite_medias(favorite_id: int, credential_instance: Credential) -> list[dict]:
+    """Fetches all media items from all pages of a Bilibili favorite list."""
     has_more = True
     page = 1
-    media_list = []
+    all_medias = []
+    print(f"Fetching all pages for favorite ID: {favorite_id}...")
     while has_more:
-        # 随机500ms ~ 3000ms
-        await asyncio.sleep(random.randint(500, 3000) / 1000)
+        try:
+            result = await favorite_list.get_video_favorite_list_content(
+                media_id=favorite_id, page=page, credential=credential_instance
+            )
+            if not result["medias"]:
+                print(f"No more medias found for favorite {favorite_id} on page {page}.")
+                break
+            
+            all_medias.extend(result["medias"])
+            print(f"Fetched page {page} for favorite {favorite_id}, {len(result['medias'])} items. Total: {len(all_medias)}")
+            
+            has_more = result["has_more"]
+            page += 1
+            if page > 50: 
+                print(f"[WARN] Exceeded 50 pages for favorite {favorite_id}. Stopping.")
+                break
+            await asyncio.sleep(0.5) 
+        except Exception as e:
+            print(f"[ERROR] Failed to fetch page {page} for favorite {favorite_id}: {e}")
+            break 
+    return all_medias
 
-        # 获取收藏夹内容
-        result = await favorite_list.get_video_favorite_list_content(media_id=favorite_id, page=page, credential=credential)
-        if not result["medias"]:
-            break
+async def sync_favorites() -> None:
+    """Syncs Bilibili favorites with the local SQLite database and downloads covers."""
+    os.makedirs(COVERS_DIR, exist_ok=True) # Ensure covers directory exists
+    await database.initialize_database() 
 
-        # 临时文件
-        temp_file = f"{save_dir}/temp/page_{page}.json"
-        with open(temp_file, "w", encoding="utf-8") as f:
-            json.dump(result, f, ensure_ascii=False)
-        has_more = result["has_more"]
-        page += 1
-        media_list.extend(result["medias"])
+    try:
+        api_collections_response = await favorite_list.get_video_favorite_list(uid=uid, credential=credential)
+        if not api_collections_response or not api_collections_response.get("list"):
+            print("[ERROR] Could not fetch favorite lists from API or no lists found.")
+            return
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch favorite lists from API: {e}")
+        return
 
-    return media_list
+    api_collections = api_collections_response["list"]
+    run_time = datetime.now(timezone.utc)
 
-# 本地加载收藏夹内容（用于测试）
-def local_load_favorite_list(favorite_id: int, save_dir: str) -> list[dict]:
-    # 读取所有temp文件  
-    temp_files = glob.glob(f"{save_dir}/temp/*.json")
-    media_list = []
-    for temp_file in temp_files:
-        with open(temp_file, "r", encoding="utf-8") as f:
-            media_list.extend(json.load(f)["medias"])
-    return media_list
+    for fav_data in api_collections:
+        bilibili_fid = str(fav_data["id"]) 
+        title = fav_data["title"]
+        print(f"Processing collection: {title} (FID: {bilibili_fid})")
 
-# 获取我的收藏夹
-async def my_favorite() -> None:
-    result = await favorite_list.get_video_favorite_list(uid=uid, credential=credential)
-    run_time = datetime.now()
-    
-    # 拉取数据
-    for favorite in result["list"]:
-        # 创建文件夹
-        save_dir = f"{save_path}/{favorite['id']}-{favorite['title']}"
-        os.makedirs(f"{save_dir}/temp", exist_ok=True)
+        db_collection_id = await database.get_or_create_collection(bilibili_fid, title)
+        api_media_list = await fetch_all_favorite_medias(int(bilibili_fid), credential)
 
-        media_list = await load_favorite_list(favorite["id"], save_dir)
-        # media_list = local_load_favorite_list(favorite["id"], save_dir)
+        if not api_media_list:
+            print(f"No media items found via API for collection: {title}. Skipping video processing.")
+            await database.update_collection_sync_time(db_collection_id)
+            continue
 
-        # 检测是否存在latest_content.json，如果有，则修改为 backup_{Y-m-d_H-M-S}.json
-        has_latest_content = os.path.exists(f"{save_dir}/latest_content.json")
-        backup_file_name = f"backup_{run_time.strftime('%Y-%m-%d_%H-%M-%S')}.json"
-        backup_file_content = []
-        if has_latest_content:
-            os.rename(f"{save_dir}/latest_content.json", f"{save_dir}/{backup_file_name}")
-            with open(f"{save_dir}/{backup_file_name}", "r", encoding="utf-8") as f:
-                backup_file_content = json.load(f)
+        db_videos_dict = await database.get_videos_by_collection_id(db_collection_id)
+        api_bvids_seen = set()
 
-        # 保存新的latest_content.json
-        with open(f"{save_dir}/latest_content.json", "w", encoding="utf-8") as f:
-            json.dump(media_list, f, ensure_ascii=False)
+        for video_item in api_media_list:
+            bvid = video_item["bv_id"]
+            api_bvids_seen.add(bvid)
+            
+            local_cover_path = None # Initialize before potential download
+            # Download cover only if video is not "已失效视频"
+            # and if it's a new video OR an existing video whose cover_url might have changed or wasn't downloaded.
+            # For simplicity, we can attempt download if local_cover_path is not already set in DB,
+            # or if cover_url changed.
+            
+            existing_db_video_data = db_videos_dict.get(bvid)
+            should_download_cover = False
 
-        # 如果有backup_file_content则进行对比，如果backup_file_content中的视频title不是“已失效视频”，但是latest_content.json中的视频title是“已失效视频”，则输出
-        delete_list = []
-        if has_latest_content:
-            for latest_media in media_list:
-                # 是否存在于backup_file_content中
-                for backup_media in backup_file_content:
-                    if latest_media["bv_id"] == backup_media["bv_id"]:
-                        if backup_media["title"] != "已失效视频" and latest_media["title"] == "已失效视频":
-                            delete_list.append(backup_media)
-                            print(f"收藏夹：{favorite['title']}, {backup_media['title']} 已失效, bvid: {backup_media['bv_id']}, up主: {backup_media['upper']['name']}")
-        else:
-            # 第一次跑，将所有title为“已失效视频”都装入delete_list
-            for latest_media in media_list:
-                if latest_media["title"] == "已失效视频":
-                    delete_list.append(latest_media)
-                    print(f"收藏夹：{favorite['title']}, {latest_media['title']} 已失效, bvid: {latest_media['bv_id']}, up主: {latest_media['upper']['name']}")
+            if video_item["title"] != "已失效视频":
+                if existing_db_video_data: # Existing video
+                    if not existing_db_video_data.get("local_cover_path") or existing_db_video_data.get("cover_url") != video_item["cover"]:
+                        should_download_cover = True
+                else: # New video
+                    should_download_cover = True
+            
+            if should_download_cover and video_item.get("cover"):
+                print(f"  Attempting cover download for: {video_item['title']} (BVID: {bvid})")
+                local_cover_path = await download_cover(bvid, video_item["cover"])
 
-        # 存储已失效视频
-        if len(delete_list) > 0:
-            delete_file_name = f"{save_dir}/delete_list_{run_time.strftime('%Y-%m-%d_%H-%M-%S')}.json"
-            with open(delete_file_name, "w", encoding="utf-8") as f:
-                json.dump(delete_list, f, ensure_ascii=False)
+            if bvid in db_videos_dict:
+                db_video = db_videos_dict[bvid]
+                print(f"  Updating video: {video_item['title']} (BVID: {bvid})")
+                # Pass local_cover_path, it will be None if download failed/skipped or if it's an existing video and cover didn't need update.
+                # The database.update_video function needs to handle `local_cover_path=None` correctly (i.e., not update the field if None).
+                # The version of database.py from previous step's subtask should handle this.
+                await database.update_video(db_video["id"], video_item, run_time, db_video, local_cover_path=local_cover_path if local_cover_path else db_video.get("local_cover_path"))
+                if db_video["title"] != "已失效视频" and video_item["title"] == "已失效视频":
+                    print(f"  [STATUS CHANGE] Video '{db_video['title']}' (BVID: {bvid}) in collection '{title}' became unavailable.")
+                elif db_video["is_deleted"] and video_item["title"] != "已失效视频":
+                     print(f"  [STATUS CHANGE] Video '{video_item['title']}' (BVID: {bvid}) in collection '{title}' became available again.")
+            else:
+                print(f"  Adding new video: {video_item['title']} (BVID: {bvid})")
+                await database.add_video(db_collection_id, video_item, run_time, local_cover_path=local_cover_path)
+                if video_item["title"] == "已失效视频":
+                    print(f"  [NEW UNAVAILABLE] New video '{video_item['title']}' (BVID: {bvid}) in collection '{title}' is unavailable.")
+        
+        for bvid, db_video in db_videos_dict.items():
+            if bvid not in api_bvids_seen and not db_video["is_deleted"]:
+                print(f"  Marking as deleted (not in API anymore): {db_video['title']} (BVID: {bvid})")
+                await database.mark_video_as_deleted_by_bvid(bvid, db_collection_id, run_time)
+                print(f"  [DELETED FROM BILIBILI] Video '{db_video['title']}' (BVID: {bvid}) in collection '{title}' was removed from Bilibili favorites.")
+        
+        await database.update_collection_sync_time(db_collection_id)
+        print(f"Finished processing collection: {title}")
 
+    print("Favorite synchronization complete.")
 
-async def main() -> None:
-    # 检测收藏夹被删除的视频
-    await my_favorite()
-
+async def main():
+    await sync_favorites()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    required_env_vars = ["USER_DEDE_USER_ID", "USER_SESSDATA", "USER_BILI_JCT", "USER_BUVID3"]
+    if not all(os.getenv(var) for var in required_env_vars):
+        print(f"Error: Missing one or more required environment variables: {', '.join(required_env_vars)}")
+        print("Please ensure your .env file is correctly set up.")
+    else:
+        asyncio.run(main())
