@@ -13,4 +13,7 @@ wheels/
 .env.bak
 .data
 favorite/
+covers/
+templates/
+logs/
 bilibili_favorites.db
