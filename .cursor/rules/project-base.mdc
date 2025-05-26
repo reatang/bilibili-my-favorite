@@ -1,0 +1,302 @@
+---
+description: 项目基础信息
+globs: 
+alwaysApply: false
+---
+# B站收藏夹管理系统 - 项目开发规则
+
+## 项目概述
+
+**项目名称**: bilibili-my-favorite  
+**版本**: 1.0.0  
+**描述**: B站收藏夹本地同步和管理系统，支持Web界面和命令行工具  
+**Python版本**: >=3.12  
+
+## 核心功能
+
+- 🔄 自动同步B站收藏夹数据到本地SQLite数据库
+- 📊 完整的视频信息存储（UP主、统计数据、收藏关系）
+- 🖼️ 自动下载和管理视频封面图片
+- 🗑️ 自动检测已失效视频并标记删除状态
+- 🌐 现代化Web管理界面（FastAPI + Jinja2）
+- 🔍 支持视频搜索、状态过滤、分页查询
+- 📈 详细的收藏夹和视频统计信息
+- 🛠️ 完整的CLI管理工具（Click + Rich）
+
+## 技术栈
+
+### 核心框架
+- **Web框架**: FastAPI 0.110.0+
+- **数据库**: SQLite + aiosqlite 0.20.0+
+- **模板引擎**: Jinja2 3.1.4+
+- **HTTP客户端**: httpx 0.28.1+
+- **B站API**: bilibili-api-python 17.1.4+
+
+### 开发工具
+- **依赖管理**: uv 
+- **CLI框架**: Click 8.1.0+
+- **终端美化**: Rich 14.0.0+
+- **数据验证**: Pydantic 2.0.0+
+- **配置管理**: python-dotenv 1.0.0+
+- **HTTP请求**: curl-cffi 0.11.1+
+
+## 项目架构
+
+### 分层架构设计
+```
+src/
+
+├── app.py                 # FastAPI应用主文件
+├── cli.py                 # 命令行工具入口
+├── core/                  # 通用核心
+    ├── config.py          # 配置管理层
+├── models/                # 数据模型层
+│   └── database.py        # 数据库模型和初始化
+├── dao/                   # 数据访问层 (DAO)
+│   ├── base.py           # 基础DAO类
+│   ├── collection_dao.py # 收藏夹数据访问
+│   └── video_dao.py      # 视频数据访问
+├── services/              # 业务逻辑层
+│   ├── bilibili_service.py # B站API服务
+│   └── sync_service.py    # 同步服务
+├── api/                   # API路由层
+│   ├── models.py         # API数据模型
+│   ├── collections.py   # 收藏夹API路由
+│   └── videos.py         # 视频API路由
+└── utils/                 # 工具层
+    ├── logger.py         # 日志工具
+    └── downloader.py     # 下载工具
+```
+
+### 职责分离原则
+1. **配置层**: 统一管理应用配置和环境变量
+2. **API层**: 处理HTTP请求响应，数据验证
+3. **服务层**: 核心业务逻辑，事务处理
+4. **DAO层**: 数据库操作抽象，SQL查询
+5. **模型层**: 数据结构定义，数据库初始化
+6. **工具层**: 通用功能，日志、下载等
+
+## 数据库设计
+
+### 核心表结构
+```sql
+-- 用户表
+users (id, mid, name, face_url, jump_link, created_at, updated_at)
+
+-- 收藏夹表  
+collections (id, bilibili_fid, title, user_mid, description, cover_url, media_count, last_synced, created_at, updated_at)
+
+-- UP主表
+uploaders (id, mid, name, face_url, jump_link, created_at, updated_at)
+
+-- 视频表
+videos (id, bilibili_id, bvid, type, title, cover_url, local_cover_path, intro, page_count, duration, uploader_mid, attr, ctime, pubtime, first_cid, season_info, ogv_info, link, media_list_link, created_at, updated_at)
+
+-- 收藏关系表（多对多）
+collection_videos (id, collection_id, video_id, fav_time, is_deleted, deleted_at, first_seen, last_seen, created_at, updated_at)
+
+-- 视频统计表
+video_stats (id, video_id, collect_count, play_count, danmaku_count, reply_count, view_text, vt, play_switch, recorded_at)
+
+-- 删除日志表
+deletion_logs (id, collection_id, video_bvid, video_title, uploader_name, reason, deleted_at)
+```
+
+## 开发规范
+
+### 代码风格
+- **语言**: 所有注释、文档字符串、日志信息使用中文
+- **编码规范**: 遵循PEP 8，使用类型提示
+- **命名规范**: 
+  - 类名: PascalCase (如 `BilibiliService`)
+  - 函数/变量: snake_case (如 `get_video_by_id`)
+  - 常量: UPPER_SNAKE_CASE (如 `DATABASE_PATH`)
+
+### 错误处理
+- 使用结构化异常处理
+- 记录详细的错误日志
+- API层返回标准化错误响应
+- 服务层抛出业务异常
+
+### 日志规范
+```python
+# 使用统一的日志工具
+from ..utils.logger import logger
+
+# 日志级别使用
+logger.info("正常操作信息")
+logger.warning("警告信息") 
+logger.error("错误信息")
+logger.debug("调试信息")
+```
+
+### 异步编程
+- 所有数据库操作使用异步方法
+- HTTP请求使用异步客户端
+- 服务层方法统一使用 async/await
+
+## 配置管理
+
+### 环境变量配置
+```env
+# B站API凭据 (必需)
+USER_DEDE_USER_ID=用户ID
+USER_SESSDATA=会话数据
+USER_BILI_JCT=CSRF令牌
+USER_BUVID3=浏览器标识
+USER_AC_TIME_VALUE=访问时间值
+
+# Web服务器配置
+WEB_HOST=127.0.0.1
+WEB_PORT=8000
+DEBUG=false
+
+# 下载配置
+DOWNLOAD_TIMEOUT=10
+MAX_PAGES_PER_COLLECTION=50
+REQUEST_DELAY=0.5
+
+# 日志配置
+LOG_LEVEL=INFO
+```
+
+### 目录结构
+```
+项目根目录/
+├── src/                   # 源代码
+├── templates/             # HTML模板
+├── covers/               # 封面图片存储
+├── logs/                 # 日志文件
+├── .env                  # 环境变量
+├── bilibili_favorites.db # SQLite数据库
+└── pyproject.toml        # 项目配置
+```
+
+## API设计规范
+
+### RESTful API
+- 使用标准HTTP方法 (GET, POST, PUT, DELETE)
+- 统一的响应格式
+- 分页查询支持
+- 错误码标准化
+
+### 主要端点
+```
+GET    /api/collections/              # 获取收藏夹列表
+GET    /api/collections/{id}          # 获取收藏夹详情
+POST   /api/collections/sync          # 同步收藏夹
+GET    /api/videos/collections/{id}   # 获取收藏夹视频
+GET    /api/videos/{id}               # 获取视频详情
+GET    /api/videos/bvid/{bvid}        # 根据BVID获取视频
+```
+
+## 命令行工具
+
+### 主要命令
+```bash
+bilibili-favorites init-db           # 初始化数据库
+bilibili-favorites sync              # 同步所有收藏夹
+bilibili-favorites sync -c ID        # 同步指定收藏夹
+bilibili-favorites list-collections  # 列出收藏夹
+bilibili-favorites list-videos ID    # 列出视频
+bilibili-favorites stats             # 显示统计
+bilibili-favorites serve             # 启动Web服务
+```
+
+## 部署和运行
+
+### 开发环境
+```bash
+# 安装依赖
+uv sync
+
+# 初始化数据库
+bilibili-favorites init-db
+
+# 启动开发服务器
+bilibili-favorites serve --reload
+```
+
+### 生产环境
+```bash
+# 使用uvicorn直接运行
+uvicorn src.app:app --host 0.0.0.0 --port 8000
+
+# 或使用gunicorn
+gunicorn src.app:app -w 4 -k uvicorn.workers.UvicornWorker
+```
+
+## 扩展开发指南
+
+### 添加新API端点
+1. 在 `src/api/` 下创建或修改路由文件
+2. 在 `src/api/models.py` 中定义数据模型
+3. 在 `src/app.py` 中注册路由
+4. 更新API文档
+
+### 添加新服务
+1. 在 `src/services/` 下创建服务类
+2. 实现业务逻辑方法
+3. 在相应的API路由中调用
+4. 添加单元测试
+
+### 添加新DAO
+1. 继承 `BaseDAO` 类
+2. 实现特定的数据访问方法
+3. 在服务层中使用
+4. 确保异步操作
+
+### 数据库迁移
+1. 修改 `src/models/database.py` 中的表结构
+2. 实现数据迁移脚本
+3. 更新版本号
+4. 测试迁移过程
+
+## 注意事项
+
+### B站API使用
+- 遵守B站API使用规范
+- 控制请求频率，避免被封禁
+- 定期更新API凭据
+- 处理API限流和错误
+
+### 性能优化
+- 使用异步操作提高并发性能
+- 批量处理数据库操作
+- 合理使用缓存
+- 优化SQL查询
+
+### 安全考虑
+- 保护B站API凭据安全
+- 验证用户输入
+- 防止SQL注入
+- 限制文件访问权限
+
+## 测试规范
+
+### 单元测试
+- 为每个服务类编写测试
+- 测试覆盖率 > 80%
+- 使用pytest框架
+- Mock外部依赖
+
+### 集成测试
+- 测试API端点
+- 测试数据库操作
+- 测试同步流程
+- 测试错误处理
+
+## 版本管理
+
+### 版本号规则
+- 主版本号: 重大架构变更
+- 次版本号: 新功能添加
+- 修订号: Bug修复
+
+### 发布流程
+1. 更新版本号
+2. 更新CHANGELOG
+3. 运行完整测试
+4. 创建发布标签
+5. 部署到生产环境
+

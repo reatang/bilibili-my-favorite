@@ -1,0 +1,41 @@
+2025-05-26 23:28:02 - bilibili_favorites - ERROR - B站API凭据不完整，无法初始化
+2025-05-26 23:28:23 - bilibili_favorites - ERROR - B站API凭据不完整，无法初始化
+2025-05-26 23:28:32 - bilibili_favorites - ERROR - B站API凭据不完整，无法初始化
+2025-05-27 00:29:52 - bilibili_favorites - INFO - 数据库初始化完成
+2025-05-27 00:34:35 - bilibili_favorites - INFO - 数据库初始化完成
+2025-05-27 00:35:11 - bilibili_favorites - ERROR - 初始化B站API客户端失败: 'Config' object has no attribute 'validate_bilibili_credentials'
+2025-05-27 00:39:34 - bilibili_favorites - INFO - 数据库初始化完成
+2025-05-27 00:41:47 - bilibili_favorites - ERROR - B站API凭据不完整，无法初始化
+2025-05-27 00:44:12 - bilibili_favorites - ERROR - B站API凭据不完整，无法初始化
+2025-05-27 00:46:47 - bilibili_favorites - ERROR - B站API凭据不完整，无法初始化
+2025-05-27 00:47:05 - bilibili_favorites - ERROR - B站API凭据不完整，无法初始化
+2025-05-27 00:49:21 - bilibili_favorites - INFO - B站API凭据初始化成功
+2025-05-27 00:49:21 - bilibili_favorites - INFO - 开始同步所有收藏夹
+2025-05-27 00:49:21 - bilibili_favorites - INFO - 数据库初始化完成
+2025-05-27 00:49:21 - bilibili_favorites - ERROR - 同步过程中发生错误: 'Config' object has no attribute 'ensure_directories'
+2025-05-27 00:51:13 - bilibili_favorites - INFO - B站API凭据初始化成功
+2025-05-27 00:51:13 - bilibili_favorites - INFO - 开始同步所有收藏夹
+2025-05-27 00:51:13 - bilibili_favorites - INFO - 数据库初始化完成
+2025-05-27 00:51:13 - bilibili_favorites - WARNING - 未获取到收藏夹列表或列表为空
+2025-05-27 00:51:14 - bilibili_favorites - WARNING - 未获取到收藏夹列表
+2025-05-27 00:55:34 - bilibili_favorites - INFO - B站API凭据初始化成功
+2025-05-27 00:55:34 - bilibili_favorites - INFO - 开始同步所有收藏夹
+2025-05-27 00:55:34 - bilibili_favorites - INFO - 数据库初始化完成
+2025-05-27 00:55:35 - bilibili_favorites - WARNING - 未获取到收藏夹列表或列表为空
+2025-05-27 00:55:35 - bilibili_favorites - WARNING - 未获取到收藏夹列表
+2025-05-27 00:58:15 - bilibili_favorites - INFO - B站API凭据初始化成功
+2025-05-27 00:58:15 - bilibili_favorites - INFO - 开始同步所有收藏夹
+2025-05-27 00:58:15 - bilibili_favorites - INFO - 数据库初始化完成
+2025-05-27 00:58:15 - bilibili_favorites - WARNING - 未获取到收藏夹列表或列表为空
+2025-05-27 00:58:15 - bilibili_favorites - WARNING - 未获取到收藏夹列表
+2025-05-27 01:01:29 - bilibili_favorites - ERROR - 初始化B站API客户端失败: Credential.__init__() got an unexpected keyword argument 'DedeUserID'
+2025-05-27 01:02:02 - bilibili_favorites - INFO - B站API凭据初始化成功
+2025-05-27 01:02:02 - bilibili_favorites - INFO - 开始同步所有收藏夹
+2025-05-27 01:02:02 - bilibili_favorites - INFO - 数据库初始化完成
+2025-05-27 01:02:02 - bilibili_favorites - WARNING - 未获取到收藏夹列表或列表为空
+2025-05-27 01:02:02 - bilibili_favorites - WARNING - 未获取到收藏夹列表
+2025-05-27 01:08:02 - bilibili_favorites - INFO - B站API凭据初始化成功
+2025-05-27 01:08:02 - bilibili_favorites - INFO - 开始同步所有收藏夹
+2025-05-27 01:08:02 - bilibili_favorites - INFO - 数据库初始化完成
+2025-05-27 01:08:02 - bilibili_favorites - WARNING - 未获取到收藏夹列表或列表为空
+2025-05-27 01:08:02 - bilibili_favorites - WARNING - 未获取到收藏夹列表

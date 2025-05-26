@@ -1,16 +1,29 @@
 [project]
 name = "bilibili-my-favorite"
-version = "0.1.0"
-description = "缓存并检测我收藏夹内的"
+version = "1.0.0"
+description = "B站收藏夹本地同步和管理系统"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "aiohttp>=3.11.18",
     "bilibili-api-python>=17.1.4",
     "curl-cffi>=0.11.1",
-    "dotenv>=0.9.9",
+    "python-dotenv>=1.0.0",
     "httpx>=0.28.1",
     "rich>=14.0.0",
     "fastapi>=0.110.0",
     "uvicorn[standard]>=0.27.0",
+    "aiosqlite>=0.20.0",
+    "jinja2>=3.1.4",
+    "python-multipart>=0.0.17",
+    "click>=8.1.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
 ]
+
+[project.scripts]
+bilibili-favorites = "bilibili_my_favorite.cli:cli"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
