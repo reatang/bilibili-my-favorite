@@ -178,7 +178,7 @@ async def initialize_database():
 
 async def get_or_create_user(mid: str, name: str, face_url: str = None) -> int:
     """获取或创建用户记录"""
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         now = datetime.now(timezone.utc)
         cursor = await db.execute("SELECT id, name, face_url FROM users WHERE mid = ?", (mid,))
         row = await cursor.fetchone()
@@ -204,7 +204,7 @@ async def get_or_create_user(mid: str, name: str, face_url: str = None) -> int:
 
 async def get_or_create_uploader(mid: str, name: str, face_url: str = None, jump_link: str = None) -> int:
     """获取或创建UP主记录"""
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         now = datetime.now(timezone.utc)
         cursor = await db.execute("SELECT id, name, face_url, jump_link FROM uploaders WHERE mid = ?", (mid,))
         row = await cursor.fetchone()
@@ -231,7 +231,7 @@ async def get_or_create_uploader(mid: str, name: str, face_url: str = None, jump
 async def get_or_create_collection(bilibili_fid: str, title: str, user_mid: str, 
                                  description: str = None, cover_url: str = None) -> int:
     """获取或创建收藏夹记录"""
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         now = datetime.now(timezone.utc)
         cursor = await db.execute("SELECT id, title, description, cover_url FROM collections WHERE bilibili_fid = ?", (bilibili_fid,))
         row = await cursor.fetchone()
@@ -258,7 +258,7 @@ async def get_or_create_collection(bilibili_fid: str, title: str, user_mid: str,
 
 async def get_or_create_video(video_data: Dict[str, Any], uploader_id: int) -> int:
     """获取或创建视频记录"""
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         now = datetime.now(timezone.utc)
         bilibili_id = str(video_data["id"])
         bvid = video_data["bv_id"]
@@ -316,7 +316,7 @@ async def get_or_create_video(video_data: Dict[str, Any], uploader_id: int) -> i
 async def add_or_update_collection_video(collection_id: int, video_id: int, 
                                        fav_time: int, is_deleted: bool = False) -> int:
     """添加或更新收藏记录"""
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         now = datetime.now(timezone.utc)
         
         cursor = await db.execute(
@@ -349,7 +349,7 @@ async def add_or_update_collection_video(collection_id: int, video_id: int,
 
 async def add_video_stats(video_id: int, cnt_info: Dict[str, Any]) -> int:
     """添加视频统计信息"""
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         now = datetime.now(timezone.utc)
         cursor = await db.execute("""
             INSERT INTO video_stats (
@@ -369,7 +369,7 @@ async def add_video_stats(video_id: int, cnt_info: Dict[str, Any]) -> int:
 async def log_deletion(collection_id: int, video_bvid: str, video_title: str, 
                       uploader_name: str, reason: str = None):
     """记录删除日志"""
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         now = datetime.now(timezone.utc)
         await db.execute("""
             INSERT INTO deletion_logs (

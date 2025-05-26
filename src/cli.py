@@ -70,7 +70,7 @@ def sync(collection_id: Optional[str], force: bool):
             
             # 显示同步结果
             console.print("\n[bold green]同步完成![/bold green]")
-            
+             
             table = Table(title="同步统计")
             table.add_column("项目", style="cyan")
             table.add_column("数量", style="magenta")

@@ -3,6 +3,7 @@ B站API服务
 处理与B站API的交互逻辑
 """
 import asyncio
+import random
 from typing import List, Dict, Any, Optional
 from ..core.config import config
 from ..utils.logger import logger
@@ -74,8 +75,6 @@ class BilibiliService:
                 uid=uid, credential=self.credential
             )
 
-            print(response)
-
             if not response or not response.get("list"):
                 logger.warning("未获取到收藏夹列表或列表为空")
                 return []
@@ -133,7 +132,7 @@ class BilibiliService:
                 
                 # 添加请求延迟
                 if has_more and page <= max_pages:
-                    await asyncio.sleep(config.REQUEST_DELAY)
+                    await asyncio.sleep(random.randint(config.REQUEST_DELAY, config.REQUEST_DELAY *6) / 1000)
                     
             except Exception as e:
                 logger.error(f"获取收藏夹 {favorite_id} 第 {page} 页失败: {e}")
@@ -188,7 +187,7 @@ class BilibiliService:
                 
                 # 添加收藏夹间的延迟
                 if favorite_id != favorite_ids[-1]:
-                    await asyncio.sleep(config.REQUEST_DELAY)
+                    await asyncio.sleep(random.randint(config.REQUEST_DELAY, config.REQUEST_DELAY *6) / 1000)
                     
             except Exception as e:
                 logger.error(f"批量获取收藏夹 {favorite_id} 失败: {e}")

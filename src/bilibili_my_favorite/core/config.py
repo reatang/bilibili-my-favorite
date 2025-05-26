@@ -38,8 +38,8 @@ class Config(BaseSettings):
 
     # 下载配置
     DOWNLOAD_TIMEOUT: int = 10
-    MAX_PAGES_PER_COLLECTION: int = 50
-    REQUEST_DELAY: float = 0.5
+    MAX_PAGES_PER_COLLECTION: int = 100
+    REQUEST_DELAY: int = 500 # ms
 
     # 日志配置
     LOG_LEVEL: str = "INFO"
