@@ -13,3 +13,4 @@ wheels/
 .env.bak
 .data
 favorite/
+bilibili_favorites.db
