@@ -14,6 +14,7 @@ from bilibili_my_favorite.core.config import config
 from bilibili_my_favorite.utils.logger import logger
 from bilibili_my_favorite.api.collections import router as collections_router
 from bilibili_my_favorite.api.videos import router as videos_router
+from bilibili_my_favorite.dao.base import BaseDAO
 
 from dotenv import load_dotenv
 
@@ -59,6 +60,22 @@ async def startup_event():
     """应用启动事件"""
     logger.info("B站收藏夹管理系统启动中...")
     
+    # 初始化数据库连接
+    try:
+        await BaseDAO.initialize_database()
+        logger.info("数据库连接初始化成功")
+        
+        # 检查并执行数据库迁移
+        from .models.database_migration import check_migration_needed, migrate_database
+        if await check_migration_needed():
+            logger.info("检测到需要数据库迁移，开始执行...")
+            await migrate_database()
+            logger.info("数据库迁移完成")
+        
+    except Exception as e:
+        logger.error(f"数据库初始化或迁移失败: {e}")
+        raise
+    
     # 确保必要目录存在
     config.ensure_actual_directories()
     
@@ -73,6 +90,15 @@ async def startup_event():
 async def shutdown_event():
     """应用关闭事件"""
     logger.info("B站收藏夹管理系统正在关闭...")
+    
+    # 关闭数据库连接
+    try:
+        await BaseDAO.close_database()
+        logger.info("数据库连接已关闭")
+    except Exception as e:
+        logger.error(f"关闭数据库连接时出错: {e}")
+    
+    logger.info("应用关闭完成")
 
 
 @app.exception_handler(404)

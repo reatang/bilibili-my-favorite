@@ -23,11 +23,10 @@ async def get_db_connection():
 
 
 async def initialize_database():
+    """初始化数据库并创建表结构"""
     if config.DATABASE_PATH.exists():
         print(f"数据库文件已存在: {config.DATABASE_PATH}")
         return
-
-    """初始化数据库并创建表结构"""
     async with get_db_connection() as db:
         # 用户表
         await db.execute("""
@@ -93,6 +92,8 @@ async def initialize_database():
             ogv_info TEXT,
             link TEXT,
             media_list_link TEXT,
+            is_deleted BOOLEAN DEFAULT FALSE,
+            deleted_at TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (uploader_mid) REFERENCES uploaders (mid) ON DELETE CASCADE,
@@ -107,8 +108,6 @@ async def initialize_database():
             collection_id INTEGER NOT NULL,
             video_id INTEGER NOT NULL,
             fav_time INTEGER,
-            is_deleted BOOLEAN DEFAULT FALSE,
-            deleted_at TIMESTAMP,
             first_seen TIMESTAMP NOT NULL,
             last_seen TIMESTAMP NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -160,9 +159,9 @@ async def initialize_database():
             "CREATE INDEX IF NOT EXISTS idx_videos_bvid ON videos (bvid);",
             "CREATE INDEX IF NOT EXISTS idx_videos_bilibili_id ON videos (bilibili_id);",
             "CREATE INDEX IF NOT EXISTS idx_videos_uploader ON videos (uploader_mid);",
+            "CREATE INDEX IF NOT EXISTS idx_videos_deleted ON videos (is_deleted);",
             "CREATE INDEX IF NOT EXISTS idx_collection_videos_collection ON collection_videos (collection_id);",
             "CREATE INDEX IF NOT EXISTS idx_collection_videos_video ON collection_videos (video_id);",
-            "CREATE INDEX IF NOT EXISTS idx_collection_videos_deleted ON collection_videos (is_deleted);",
             "CREATE INDEX IF NOT EXISTS idx_video_stats_video ON video_stats (video_id);",
             "CREATE INDEX IF NOT EXISTS idx_deletion_logs_collection ON deletion_logs (collection_id);",
             "CREATE INDEX IF NOT EXISTS idx_deletion_logs_bvid ON deletion_logs (video_bvid);"
@@ -277,7 +276,7 @@ async def get_or_create_video(video_data: Dict[str, Any], uploader_id: int) -> i
                     title = ?, cover_url = ?, intro = ?, page_count = ?, duration = ?,
                     attr = ?, ctime = ?, pubtime = ?, first_cid = ?, 
                     season_info = ?, ogv_info = ?, link = ?, media_list_link = ?,
-                    updated_at = ?
+                    is_deleted = ?, deleted_at = ?, updated_at = ?
                 WHERE id = ?
             """, (
                 video_data["title"], video_data["cover"], video_data.get("intro", ""),
@@ -287,6 +286,7 @@ async def get_or_create_video(video_data: Dict[str, Any], uploader_id: int) -> i
                 json.dumps(video_data.get("season")) if video_data.get("season") else None,
                 json.dumps(video_data.get("ogv")) if video_data.get("ogv") else None,
                 video_data.get("link"), video_data.get("media_list_link"),
+                video_data.get("is_deleted", False), video_data.get("deleted_at"),
                 now, video_id
             ))
             await db.commit()
@@ -296,8 +296,8 @@ async def get_or_create_video(video_data: Dict[str, Any], uploader_id: int) -> i
                 INSERT INTO videos (
                     bilibili_id, bvid, type, title, cover_url, intro, page_count, duration,
                     uploader_mid, attr, ctime, pubtime, first_cid, season_info, ogv_info,
-                    link, media_list_link, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    link, media_list_link, is_deleted, deleted_at, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 bilibili_id, bvid, video_data.get("type", 2), video_data["title"],
                 video_data["cover"], video_data.get("intro", ""), video_data.get("page", 1),
@@ -307,6 +307,7 @@ async def get_or_create_video(video_data: Dict[str, Any], uploader_id: int) -> i
                 json.dumps(video_data.get("season")) if video_data.get("season") else None,
                 json.dumps(video_data.get("ogv")) if video_data.get("ogv") else None,
                 video_data.get("link"), video_data.get("media_list_link"),
+                video_data.get("is_deleted", False), video_data.get("deleted_at"),
                 now, now
             ))
             await db.commit()
@@ -314,35 +315,33 @@ async def get_or_create_video(video_data: Dict[str, Any], uploader_id: int) -> i
 
 
 async def add_or_update_collection_video(collection_id: int, video_id: int, 
-                                       fav_time: int, is_deleted: bool = False) -> int:
+                                       fav_time: int) -> int:
     """添加或更新收藏记录"""
     async with get_db_connection() as db:
         now = datetime.now(timezone.utc)
         
         cursor = await db.execute(
-            "SELECT id, is_deleted FROM collection_videos WHERE collection_id = ? AND video_id = ?",
+            "SELECT id FROM collection_videos WHERE collection_id = ? AND video_id = ?",
             (collection_id, video_id)
         )
         row = await cursor.fetchone()
         
         if row:
             record_id = row["id"]
-            deleted_at = now if is_deleted and not row["is_deleted"] else None
             await db.execute("""
                 UPDATE collection_videos SET 
-                    fav_time = ?, is_deleted = ?, deleted_at = ?, last_seen = ?, updated_at = ?
+                    fav_time = ?, last_seen = ?, updated_at = ?
                 WHERE id = ?
-            """, (fav_time, is_deleted, deleted_at, now, now, record_id))
+            """, (fav_time, now, now, record_id))
             await db.commit()
             return record_id
         else:
-            deleted_at = now if is_deleted else None
             cursor = await db.execute("""
                 INSERT INTO collection_videos (
-                    collection_id, video_id, fav_time, is_deleted, deleted_at,
+                    collection_id, video_id, fav_time,
                     first_seen, last_seen, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (collection_id, video_id, fav_time, is_deleted, deleted_at, now, now, now, now))
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (collection_id, video_id, fav_time, now, now, now, now))
             await db.commit()
             return cursor.lastrowid
 

@@ -455,42 +455,71 @@ class OptimizedSyncService:
             "media_list_link": video_data.get("media_list_link")
         }
         
-        # 检查视频是否已存在
-        existing_videos = await video_dao.get_video_by_bvid(bvid)
-        existing_video = None
-        for video in existing_videos:
-            if video["collection_id"] == collection_id:
-                existing_video = video
-                break
+        # 检查视频是否已存在（不限制收藏夹ID，因为视频表有全局唯一约束）
+        existing_video = await video_dao.get_video_by_bvid(bvid)
         
         if existing_video:
-            # 更新现有视频
+            # 更新现有视频信息
             video_id = existing_video["id"]
-            if "已失效视频" not in existing_video["title"] and is_deleted:
-                processed_video_data["title"] = f"{existing_video['title']} (已失效视频)"
+            
+            # 检查视频状态变化
+            current_deleted = existing_video.get("is_deleted", False)
+            
+            if not current_deleted and is_deleted:
+                # 视频变为不可用
+                processed_video_data["is_deleted"] = True
+                processed_video_data["deleted_at"] = datetime.now(timezone.utc)
+                if "已失效视频" not in existing_video["title"]:
+                    processed_video_data["title"] = f"{existing_video['title']} (已失效视频)"
                 logger.info(f"视频 '{existing_video['title']}' (BVID: {bvid}) 变为不可用")
-            elif existing_video["is_deleted"] and not is_deleted:
+            elif current_deleted and not is_deleted:
+                # 视频恢复可用
+                processed_video_data["is_deleted"] = False
+                processed_video_data["deleted_at"] = None
+                # 恢复视频标题（移除失效标记）
+                if "已失效视频" in existing_video["title"]:
+                    original_title = existing_video["title"].replace(" (已失效视频)", "")
+                    processed_video_data["title"] = title if title != "已失效视频" else original_title
                 logger.info(f"视频 '{title}' (BVID: {bvid}) 恢复可用")
+            else:
+                # 状态没有变化，但可能需要更新其他信息
+                processed_video_data["is_deleted"] = is_deleted
+                if is_deleted:
+                    processed_video_data["deleted_at"] = existing_video.get("deleted_at")
 
             await video_dao.update_video(video_id, processed_video_data)
-            
             self.context.stats["videos_updated"] += 1
         else:
+            # 创建新视频记录
             processed_video_data["intro"] = video_data.get("intro", "")
-            # 创建新视频
-            video_id = await video_dao.create_video(processed_video_data)
-            
+            processed_video_data["is_deleted"] = is_deleted
             if is_deleted:
-                logger.info(f"新视频 '{title}' (BVID: {bvid}) 为不可用状态")
+                processed_video_data["deleted_at"] = datetime.now(timezone.utc)
             
-            self.context.stats["videos_added"] += 1
+            try:
+                video_id = await video_dao.create_video(processed_video_data)
+                if is_deleted:
+                    logger.info(f"新视频 '{title}' (BVID: {bvid}) 为不可用状态")
+                self.context.stats["videos_added"] += 1
+            except Exception as e:
+                if "UNIQUE constraint failed" in str(e):
+                    # 并发情况下可能出现重复插入，重新查询
+                    logger.warning(f"视频 {bvid} 插入时发生唯一约束冲突，重新查询")
+                    existing_video = await video_dao.get_video_by_bvid(bvid)
+                    if existing_video:
+                        video_id = existing_video["id"]
+                        await video_dao.update_video(video_id, processed_video_data)
+                        self.context.stats["videos_updated"] += 1
+                    else:
+                        raise
+                else:
+                    raise
         
         # 更新收藏关系
         await video_dao.add_to_collection(
             collection_id=collection_id,
             video_id=video_id,
-            fav_time=video_data.get("fav_time"),
-            is_deleted=is_deleted
+            fav_time=video_data.get("fav_time")
         )
         
         # 添加统计信息
@@ -522,22 +551,27 @@ class OptimizedSyncService:
     
     async def _mark_video_deleted(self, bvid: str, collection_id: int):
         """标记视频为已删除"""
-        videos = await video_dao.get_video_by_bvid(bvid)
-        for video in videos:
-            if video["collection_id"] == collection_id:
-                await video_dao.mark_as_deleted(collection_id, video["id"])
-                
-                # 记录删除日志
-                await log_deletion(
-                    collection_id=collection_id,
-                    video_bvid=bvid,
-                    video_title=video["title"],
-                    uploader_name=video["uploader_name"],
-                    reason="从B站收藏夹中移除"
-                )
-                
-                logger.info(f"视频 '{video['title']}' (BVID: {bvid}) 已从收藏夹中删除")
-                break
+        video = await video_dao.get_video_by_bvid(bvid)
+        if not video:
+            logger.warning(f"未找到要删除的视频: {bvid}")
+            return
+            
+        # 标记视频为已删除
+        await video_dao.mark_as_deleted(video["id"])
+        
+        # 从收藏夹中移除视频
+        await video_dao.remove_from_collection(collection_id, video["id"])
+        
+        # 记录删除日志
+        await log_deletion(
+            collection_id=collection_id,
+            video_bvid=bvid,
+            video_title=video["title"],
+            uploader_name=video["uploader_name"],
+            reason="从B站收藏夹中移除"
+        )
+        
+        logger.info(f"视频 '{video['title']}' (BVID: {bvid}) 已从收藏夹中删除")
 
 
 # 创建全局服务实例

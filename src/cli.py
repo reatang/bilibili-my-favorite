@@ -16,6 +16,7 @@ from bilibili_my_favorite.services.sync_service import sync_service
 from bilibili_my_favorite.services.optimized_sync_service import optimized_sync_service
 from bilibili_my_favorite.dao.collection_dao import collection_dao
 from bilibili_my_favorite.dao.video_dao import video_dao
+from bilibili_my_favorite.dao.base import BaseDAO
 from bilibili_my_favorite.utils.logger import logger
 from bilibili_my_favorite.services.sync_context import SyncContext
 
@@ -26,6 +27,31 @@ load_dotenv()
 
 
 console = Console()
+
+
+def async_command(f):
+    """异步命令装饰器，自动处理数据库生命周期"""
+    def wrapper(*args, **kwargs):
+        async def run_with_db():
+            try:
+                # 初始化数据库连接
+                await BaseDAO.initialize_database()
+                # 运行原始函数
+                return await f(*args, **kwargs)
+            except Exception as e:
+                console.print(f"[bold red]执行失败: {e}[/bold red]")
+                logger.error(f"命令执行失败: {e}")
+                raise
+            finally:
+                # 关闭数据库连接
+                try:
+                    await BaseDAO.close_database()
+                except Exception as e:
+                    logger.error(f"关闭数据库连接时出错: {e}")
+        
+        return asyncio.run(run_with_db())
+    return wrapper
+
 
 @click.group()
 @click.option('--debug', is_flag=True, help='启用调试模式')
@@ -41,6 +67,7 @@ def cli(debug: bool):
 @click.option('--force', '-f', is_flag=True, help='强制重新下载封面')
 def sync(collection_id: Optional[str], force: bool):
     """同步收藏夹数据（默认使用优化模式，支持中断恢复）"""
+    @async_command
     async def run_sync():
         # 检查B站凭据
         if not bilibili_service.is_authenticated():
@@ -114,12 +141,13 @@ def sync(collection_id: Optional[str], force: bool):
             if len(stats["errors"]) > 5:
                 console.print(f"  ... 还有 {len(stats['errors']) - 5} 个错误")
     
-    asyncio.run(run_sync())
+    run_sync()
 
 
 @cli.command()
 def list_collections():
     """列出所有收藏夹"""
+    @async_command
     async def run_list():
         try:
             collections = await collection_dao.get_all_collections()
@@ -154,7 +182,7 @@ def list_collections():
         except Exception as e:
             console.print(f"[bold red]获取收藏夹列表失败: {e}[/bold red]")
     
-    asyncio.run(run_list())
+    run_list()
 
 
 @cli.command()
@@ -164,6 +192,7 @@ def list_collections():
 @click.option('--limit', '-l', type=int, default=20, help='显示数量限制')
 def list_videos(collection_id: int, status: str, limit: int):
     """列出收藏夹中的视频"""
+    @async_command
     async def run_list():
         try:
             # 检查收藏夹是否存在
@@ -215,12 +244,13 @@ def list_videos(collection_id: int, status: str, limit: int):
         except Exception as e:
             console.print(f"[bold red]获取视频列表失败: {e}[/bold red]")
     
-    asyncio.run(run_list())
+    run_list()
 
 
 @cli.command()
 def stats():
     """显示统计信息"""
+    @async_command
     async def run_stats():
         try:
             collections = await collection_dao.get_all_collections()
@@ -287,7 +317,7 @@ def stats():
         except Exception as e:
             console.print(f"[bold red]获取统计信息失败: {e}[/bold red]")
     
-    asyncio.run(run_stats())
+    run_stats()
 
 
 @cli.command()
@@ -316,16 +346,28 @@ def serve(host: str, port: int, reload: bool):
 @cli.command()
 def init_db():
     """初始化数据库"""
+    @async_command
     async def run_init():
         try:
             console.print("[bold blue]初始化数据库...[/bold blue]")
-            await sync_service.initialize_database()
+            
+            # 初始化数据库
+            from bilibili_my_favorite.models.database import initialize_database
+            await initialize_database()
+            
+            # 检查并执行迁移
+            from bilibili_my_favorite.models.database_migration import check_migration_needed, migrate_database
+            if await check_migration_needed():
+                console.print("[bold yellow]检测到需要数据库迁移，开始执行...[/bold yellow]")
+                await migrate_database()
+                console.print("[bold green]数据库迁移完成![/bold green]")
+            
             console.print("[bold green]数据库初始化完成![/bold green]")
             console.print(f"数据库文件: {config.DATABASE_PATH}")
         except Exception as e:
             console.print(f"[bold red]数据库初始化失败: {e}[/bold red]")
     
-    asyncio.run(run_init())
+    run_init()
 
 
 @cli.command()
