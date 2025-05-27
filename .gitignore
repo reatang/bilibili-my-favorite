@@ -15,5 +15,6 @@ wheels/
 favorite/
 covers/
 templates/
+data/
 logs/
 bilibili_favorites.db*

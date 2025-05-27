@@ -23,6 +23,7 @@ class Config(BaseSettings):
     # 文件存储配置
     COVERS_DIR: Optional[Path] = "./covers"
     TEMPLATES_DIR: Optional[Path] = "./templates"
+    DATA_DIR: Optional[Path] = "./data"
 
     # B站API配置
     USER_DEDE_USER_ID: Optional[str] = None
@@ -73,6 +74,14 @@ class Config(BaseSettings):
         else:
             self.TEMPLATES_DIR = self.TEMPLATES_DIR.resolve()
 
+        # DATA_DIR
+        if self.DATA_DIR is None:
+            self.DATA_DIR = base_dir / "data"
+        elif not self.DATA_DIR.is_absolute():
+            self.DATA_DIR = (base_dir / self.DATA_DIR).resolve()
+        else:
+            self.DATA_DIR = self.DATA_DIR.resolve()
+
         # LOG_FILE
         if self.LOG_FILE is None:
             self.LOG_FILE = base_dir / "logs" / "app.log"
@@ -107,6 +116,8 @@ class Config(BaseSettings):
         # These paths are now guaranteed to be Path objects and absolute
         if not self.COVERS_DIR.exists():
              self.COVERS_DIR.mkdir(parents=True, exist_ok=True)
+        if not self.DATA_DIR.exists():
+             self.DATA_DIR.mkdir(parents=True, exist_ok=True)
         if not self.LOG_FILE.parent.exists():
              self.LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 

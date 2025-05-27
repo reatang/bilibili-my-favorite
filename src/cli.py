@@ -13,10 +13,11 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from bilibili_my_favorite.core.config import config
 from bilibili_my_favorite.services.bilibili_service import bilibili_service
 from bilibili_my_favorite.services.sync_service import sync_service
+from bilibili_my_favorite.services.optimized_sync_service import optimized_sync_service
 from bilibili_my_favorite.dao.collection_dao import collection_dao
 from bilibili_my_favorite.dao.video_dao import video_dao
 from bilibili_my_favorite.utils.logger import logger
-
+from bilibili_my_favorite.services.sync_context import SyncContext
 
 from dotenv import load_dotenv
 
@@ -39,10 +40,8 @@ def cli(debug: bool):
 @click.option('--collection-id', '-c', help='指定收藏夹ID，为空则同步所有')
 @click.option('--force', '-f', is_flag=True, help='强制重新下载封面')
 def sync(collection_id: Optional[str], force: bool):
-    """同步收藏夹数据"""
+    """同步收藏夹数据（默认使用优化模式，支持中断恢复）"""
     async def run_sync():
-        console.print("[bold blue]开始同步收藏夹数据...[/bold blue]")
-        
         # 检查B站凭据
         if not bilibili_service.is_authenticated():
             console.print("[bold red]错误: B站API凭据不完整[/bold red]")
@@ -53,46 +52,67 @@ def sync(collection_id: Optional[str], force: bool):
             console.print("- USER_BUVID3")
             return
         
+        # 使用优化同步方式（默认）
         try:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console
-            ) as progress:
-                task = progress.add_task("同步中...", total=None)
+            # 检查是否有中断的任务
+            lock_file = SyncContext.find_existing_lock_file()
+            
+            if lock_file:
+                console.print("[bold yellow]发现中断的同步任务，继续执行...[/bold yellow]")
+                # 从锁文件加载任务ID
+                context = SyncContext.load_from_lock_file(lock_file)
+                task_id = context.task_id
                 
-                if collection_id:
-                    stats = await sync_service.sync_single_collection(collection_id)
-                else:
-                    stats = await sync_service.sync_all_favorites()
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    console=console
+                ) as progress:
+                    task = progress.add_task("恢复同步中...", total=None)
+                    stats = await optimized_sync_service.resume_sync_task(task_id)
+                    progress.update(task, completed=True)
+            else:
+                console.print("[bold blue]开始优化同步收藏夹数据...[/bold blue]")
                 
-                progress.update(task, completed=True)
-            
-            # 显示同步结果
-            console.print("\n[bold green]同步完成![/bold green]")
-             
-            table = Table(title="同步统计")
-            table.add_column("项目", style="cyan")
-            table.add_column("数量", style="magenta")
-            
-            table.add_row("处理的收藏夹", str(stats["collections_processed"]))
-            table.add_row("新增视频", str(stats["videos_added"]))
-            table.add_row("更新视频", str(stats["videos_updated"]))
-            table.add_row("删除视频", str(stats["videos_deleted"]))
-            table.add_row("下载封面", str(stats["covers_downloaded"]))
-            
-            console.print(table)
-            
-            if stats["errors"]:
-                console.print(f"\n[bold yellow]警告: 发生了 {len(stats['errors'])} 个错误[/bold yellow]")
-                for error in stats["errors"][:5]:  # 只显示前5个错误
-                    console.print(f"  • {error}")
-                if len(stats["errors"]) > 5:
-                    console.print(f"  ... 还有 {len(stats['errors']) - 5} 个错误")
-        
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    console=console
+                ) as progress:
+                    task = progress.add_task("同步中...", total=None)
+                    
+                    if collection_id:
+                        stats = await optimized_sync_service.sync_single_collection(collection_id)
+                    else:
+                        stats = await optimized_sync_service.sync_all_favorites()
+                    
+                    progress.update(task, completed=True)
         except Exception as e:
             console.print(f"[bold red]同步失败: {e}[/bold red]")
             logger.error(f"同步失败: {e}")
+            return
+        
+        # 显示同步结果
+        console.print("\n[bold green]同步完成![/bold green]")
+         
+        table = Table(title="同步统计")
+        table.add_column("项目", style="cyan")
+        table.add_column("数量", style="magenta")
+        
+        table.add_row("处理的收藏夹", str(stats["collections_processed"]))
+        table.add_row("新增视频", str(stats["videos_added"]))
+        table.add_row("更新视频", str(stats["videos_updated"]))
+        table.add_row("删除视频", str(stats["videos_deleted"]))
+        table.add_row("下载封面", str(stats["covers_downloaded"]))
+        
+        console.print(table)
+        
+        if stats["errors"]:
+            console.print(f"\n[bold yellow]警告: 发生了 {len(stats['errors'])} 个错误[/bold yellow]")
+            for error in stats["errors"][:5]:  # 只显示前5个错误
+                console.print(f"  • {error}")
+            if len(stats["errors"]) > 5:
+                console.print(f"  ... 还有 {len(stats['errors']) - 5} 个错误")
     
     asyncio.run(run_sync())
 
@@ -306,6 +326,33 @@ def init_db():
             console.print(f"[bold red]数据库初始化失败: {e}[/bold red]")
     
     asyncio.run(run_init())
+
+
+@cli.command()
+def clean():
+    """清理中断的同步任务（删除锁文件，保留历史数据）"""
+    try:
+        # 检查锁文件
+        lock_file = config.DATA_DIR / "sync_lock.json"
+        
+        if not lock_file.exists():
+            console.print("[yellow]没有找到中断的同步任务[/yellow]")
+            return
+        
+        console.print("[bold blue]清理中断的同步任务...[/bold blue]")
+        
+        # 删除锁文件
+        lock_file.unlink()
+        console.print(f"删除锁文件: {lock_file}")
+        console.print("[dim]历史数据目录已保留[/dim]")
+        
+        console.print("[bold green]清理完成![/bold green]")
+        
+    except Exception as e:
+        console.print(f"[bold red]清理失败: {e}[/bold red]")
+
+
+
 
 
 if __name__ == "__main__":

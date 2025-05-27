@@ -119,7 +119,7 @@ class VideoDAO(BaseDAO):
         params = []
         
         updatable_fields = [
-            "title", "cover_url", "local_cover_path", "intro", "page_count", 
+            "title", "cover_url", "local_cover_path", "page_count", 
             "duration", "attr", "ctime", "pubtime", "first_cid", "season_info", 
             "ogv_info", "link", "media_list_link"
         ]
