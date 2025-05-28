@@ -1,0 +1,416 @@
+---
+description: 项目基础信息
+globs: 
+alwaysApply: false
+---
+# B站收藏夹管理系统 - 项目开发规则
+
+## 项目概述
+
+**项目名称**: bilibili-my-favorite  
+**版本**: 1.0.0  
+**描述**: B站收藏夹本地同步和管理系统，支持Web界面和命令行工具  
+**Python版本**: >=3.12  
+
+## 核心功能
+
+- 🔄 自动同步B站收藏夹数据到本地SQLite数据库
+- 📊 完整的视频信息存储（UP主、统计数据、收藏关系）
+- 🖼️ 自动下载和管理视频封面图片
+- 🗑️ 自动检测已失效视频并标记删除状态
+- 🌐 现代化Web管理界面（FastAPI + Jinja2）
+- 🔍 支持视频搜索、状态过滤、分页查询
+- 📈 详细的收藏夹和视频统计信息
+- 🛠️ 完整的CLI管理工具（Click + Rich）
+- 🎬 官方影视作品识别和分类管理
+- 📝 详细的错误栈信息记录和调试支持
+- 🗂️ 被删除视频的详细记录和追踪
+
+## 技术栈
+
+### 核心框架
+- **Web框架**: FastAPI 0.110.0+
+- **数据库**: SQLite + aiosqlite 0.20.0+
+- **模板引擎**: Jinja2 3.1.4+
+- **HTTP客户端**: httpx 0.28.1+
+- **B站API**: bilibili-api-python 17.1.4+
+
+### 开发工具
+- **依赖管理**: uv 
+- **CLI框架**: Click 8.1.0+
+- **终端美化**: Rich 14.0.0+
+- **数据验证**: Pydantic 2.0.0+
+- **配置管理**: python-dotenv 1.0.0+
+- **HTTP请求**: curl-cffi 0.11.1+
+
+## 项目架构
+
+### 分层架构设计
+```
+src/
+├── cli.py                           # 命令行工具入口
+└── bilibili_my_favorite/            # 主要源代码包
+    ├── __init__.py                  # 包初始化文件
+    ├── app.py                       # FastAPI应用主文件
+    ├── core/                        # 核心配置层
+    │   ├── __init__.py
+    │   └── config.py                # 配置管理和环境变量
+    ├── models/                      # 数据模型层
+    │   ├── __init__.py
+    │   ├── database.py              # 数据库模型和表结构定义
+    │   └── database_migration.py    # 数据库迁移脚本
+    ├── dao/                         # 数据访问层 (DAO)
+    │   ├── __init__.py
+    │   ├── base.py                  # 基础DAO类和数据库连接管理
+    │   ├── collection_dao.py        # 收藏夹数据访问操作
+    │   └── video_dao.py             # 视频数据访问操作
+    ├── services/                    # 业务逻辑层
+    │   ├── __init__.py
+    │   ├── bilibili_service.py      # B站API服务封装
+    │   ├── optimized_sync_service.py # 优化的同步服务
+    │   └── sync_context.py          # 同步上下文和状态管理
+    ├── api/                         # API路由层
+    │   ├── __init__.py
+    │   ├── models.py                # API数据模型和响应格式
+    │   ├── collections.py           # 收藏夹API路由
+    │   └── videos.py                # 视频API路由
+    └── utils/                       # 工具层
+        ├── __init__.py
+        ├── logger.py                # 日志配置和工具
+        └── downloader.py            # 文件下载工具
+```
+
+### 职责分离原则
+1. **核心配置层 (core/)**: 统一管理应用配置、环境变量和全局设置
+2. **API路由层 (api/)**: 处理HTTP请求响应、数据验证和路由分发
+3. **业务逻辑层 (services/)**: 核心业务逻辑、同步服务、事务处理和状态管理
+4. **数据访问层 (dao/)**: 数据库操作抽象、SQL查询和连接管理
+5. **数据模型层 (models/)**: 数据结构定义、数据库初始化和迁移脚本
+6. **工具层 (utils/)**: 通用功能模块，如日志记录、文件下载等
+7. **CLI层 (cli.py)**: 命令行接口，提供完整的管理工具集
+
+## 数据库设计
+
+### 核心表结构
+```sql
+-- 用户表
+users (id, mid, name, face_url, jump_link, created_at, updated_at)
+
+-- 收藏夹表  
+collections (id, bilibili_fid, title, user_mid, description, cover_url, media_count, last_synced, created_at, updated_at)
+
+-- UP主表
+uploaders (id, mid, name, face_url, jump_link, created_at, updated_at)
+
+-- 视频表 (重要字段说明见下方)
+videos (id, bilibili_id, bvid, type, title, cover_url, local_cover_path, intro, page_count, duration, uploader_mid, attr, ctime, pubtime, first_cid, season_info, ogv_info, link, media_list_link, is_deleted, deleted_at, created_at, updated_at)
+
+-- 收藏关系表（多对多）
+collection_videos (id, collection_id, video_id, fav_time, first_seen, last_seen, created_at, updated_at)
+
+-- 视频统计表
+video_stats (id, video_id, collect_count, play_count, danmaku_count, reply_count, view_text, vt, play_switch, recorded_at)
+
+-- 删除日志表
+deletion_logs (id, collection_id, video_bvid, video_title, uploader_name, reason, deleted_at)
+```
+
+### 重要字段说明
+- **videos.ogv_info**: 存储官方影视作品信息的JSON字符串，如果此字段有值，说明该视频是B站官方影视作品（电影、电视剧、纪录片等）
+- **videos.season_info**: 存储番剧/电视剧季度信息的JSON字符串，包含季度编号、集数等信息
+- **videos.first_cid**: 视频的第一个分P的CID，用于播放和下载
+- **videos.attr**: 视频属性标识，用于判断视频状态（如是否失效）
+- **videos.type**: 视频类型，2表示普通视频，其他值表示特殊类型内容
+- **videos.is_deleted**: 视频删除状态，从collection_videos表迁移而来，表示全局删除状态
+- **videos.deleted_at**: 视频删除时间戳
+
+## 开发规范
+
+### 代码风格
+- **语言**: 所有注释、文档字符串、日志信息使用中文
+- **编码规范**: 遵循PEP 8，使用类型提示
+- **命名规范**: 
+  - 类名: PascalCase (如 `BilibiliService`)
+  - 函数/变量: snake_case (如 `get_video_by_id`)
+  - 常量: UPPER_SNAKE_CASE (如 `DATABASE_PATH`)
+
+### 错误处理
+- 使用结构化异常处理
+- 记录详细的错误日志和完整错误栈信息
+- API层返回标准化错误响应
+- 服务层抛出业务异常
+- 所有数据库操作包含详细的错误栈追踪
+- 同步过程中的错误和删除视频信息统一记录和展示
+
+### 日志规范
+```python
+# 使用统一的日志工具
+from ..utils.logger import logger
+import traceback
+
+# 日志级别使用
+logger.info("正常操作信息")
+logger.warning("警告信息") 
+logger.error("错误信息")
+logger.debug("调试信息")
+
+# 错误栈记录规范
+try:
+    # 业务逻辑
+    pass
+except Exception as e:
+    error_traceback = traceback.format_exc()
+    logger.error(f"操作失败: {e}\n错误栈:\n{error_traceback}")
+    raise
+```
+
+### 异步编程
+- 所有数据库操作使用异步方法
+- HTTP请求使用异步客户端
+- 服务层方法统一使用 async/await
+
+## 配置管理
+
+### 环境变量配置
+```env
+# B站API凭据 (必需)
+USER_DEDE_USER_ID=用户ID
+USER_SESSDATA=会话数据
+USER_BILI_JCT=CSRF令牌
+USER_BUVID3=浏览器标识
+USER_AC_TIME_VALUE=访问时间值
+
+# Web服务器配置
+WEB_HOST=127.0.0.1
+WEB_PORT=8000
+DEBUG=false
+
+# 下载配置
+DOWNLOAD_TIMEOUT=10
+MAX_PAGES_PER_COLLECTION=50
+REQUEST_DELAY=0.5
+
+# 日志配置
+LOG_LEVEL=INFO
+```
+
+### 目录结构
+```
+项目根目录/
+├── src/                           # 源代码目录
+│   ├── cli.py                     # 命令行工具入口
+│   └── bilibili_my_favorite/      # 主要源代码包
+├── data/                          # 同步数据临时存储
+├── covers/                        # 视频封面图片存储
+├── logs/                          # 应用日志文件
+├── .env                           # 环境变量配置
+├── .gitignore                     # Git忽略文件配置
+├── .python-version                # Python版本指定
+├── bilibili_favorites.db          # SQLite主数据库
+├── bilibili_favorites.db-wal      # SQLite WAL日志文件
+├── bilibili_favorites.db-shm      # SQLite共享内存文件
+├── pyproject.toml                 # 项目配置和依赖管理
+├── uv.lock                        # 依赖锁定文件
+├── README.md                      # 项目说明文档
+├── LICENSE                        # 开源许可证
+└── web_server.py                  # 独立Web服务器启动脚本
+```
+
+## API设计规范
+
+### RESTful API
+- 使用标准HTTP方法 (GET, POST, PUT, DELETE)
+- 统一的响应格式
+- 分页查询支持
+- 错误码标准化
+
+### 主要端点
+```
+GET    /api/collections/              # 获取收藏夹列表
+GET    /api/collections/{id}          # 获取收藏夹详情
+POST   /api/collections/sync          # 同步收藏夹
+GET    /api/videos/collections/{id}   # 获取收藏夹视频
+GET    /api/videos/{id}               # 获取视频详情
+GET    /api/videos/bvid/{bvid}        # 根据BVID获取视频
+```
+
+## 命令行工具
+
+### 主要命令
+```bash
+python src/cli.py init-db           # 初始化数据库
+python src/cli.py sync              # 同步所有收藏夹
+python src/cli.py sync -c ID        # 同步指定收藏夹
+python src/cli.py list-collections  # 列出收藏夹
+python src/cli.py list-videos ID    # 列出视频
+python src/cli.py list-official     # 列出官方影视作品
+python src/cli.py list-deleted      # 列出最近被删除的视频
+python src/cli.py stats             # 显示统计（包含官方影视作品统计）
+python src/cli.py serve             # 启动Web服务
+python src/cli.py clean             # 清理中断的同步任务
+```
+
+## 部署和运行
+
+### 开发环境
+```bash
+# 安装依赖
+uv sync
+
+# 初始化数据库
+bilibili-favorites init-db
+
+# 启动开发服务器
+bilibili-favorites serve --reload
+```
+
+### 生产环境
+```bash
+# 使用uvicorn直接运行
+uvicorn src.bilibili_my_favorite.app:app --host 0.0.0.0 --port 8000
+
+# 或使用gunicorn
+gunicorn src.bilibili_my_favorite.app:app -w 4 -k uvicorn.workers.UvicornWorker
+
+# 使用独立Web服务器脚本
+python web_server.py
+```
+
+## 扩展开发指南
+
+### 添加新API端点
+1. 在 `src/bilibili_my_favorite/api/` 下创建或修改路由文件
+2. 在 `src/bilibili_my_favorite/api/models.py` 中定义数据模型
+3. 在 `src/bilibili_my_favorite/app.py` 中注册路由
+4. 更新API文档
+
+### 添加新服务
+1. 在 `src/bilibili_my_favorite/services/` 下创建服务类
+2. 实现业务逻辑方法
+3. 在相应的API路由中调用
+4. 添加单元测试
+
+### 添加新DAO
+1. 继承 `src/bilibili_my_favorite/dao/base.py` 中的 `BaseDAO` 类
+2. 实现特定的数据访问方法
+3. 在服务层中使用
+4. 确保异步操作和错误处理
+
+### 数据库迁移
+1. 修改 `src/bilibili_my_favorite/models/database.py` 中的表结构
+2. 在 `src/bilibili_my_favorite/models/database_migration.py` 中实现迁移脚本
+3. 更新版本号
+4. 测试迁移过程和数据完整性
+
+## 注意事项
+
+### B站API使用
+- 遵守B站API使用规范
+- 控制请求频率，避免被封禁
+- 定期更新API凭据
+- 处理API限流和错误
+
+### 性能优化
+- 使用异步操作提高并发性能
+- 批量处理数据库操作
+- 合理使用缓存
+- 优化SQL查询
+
+### 安全考虑
+- 保护B站API凭据安全
+- 验证用户输入
+- 防止SQL注入
+- 限制文件访问权限
+
+## 测试规范
+
+### 单元测试
+- 为每个服务类编写测试
+- 测试覆盖率 > 80%
+- 使用pytest框架
+- Mock外部依赖
+
+### 集成测试
+- 测试API端点
+- 测试数据库操作
+- 测试同步流程
+- 测试错误处理
+
+## 版本管理
+
+### 版本号规则
+- 主版本号: 重大架构变更
+- 次版本号: 新功能添加
+- 修订号: Bug修复
+
+### 发布流程
+1. 更新版本号
+2. 更新CHANGELOG
+3. 运行完整测试
+4. 创建发布标签
+5. 部署到生产环境
+
+## 新增功能详解
+
+### 错误栈信息记录
+- **目标**: 提供完整的错误调试信息，快速定位问题根源
+- **实现**: 在所有异常处理中使用 `traceback.format_exc()` 记录完整错误栈
+- **覆盖范围**: 
+  - 数据库操作层 (BaseDAO)
+  - 同步服务层 (OptimizedSyncService)
+  - CLI命令执行
+  - 视频处理和封面下载
+- **日志格式**: 
+  ```
+  错误信息: 具体错误描述
+  错误栈:
+  Traceback (most recent call last):
+    File "...", line xxx, in function_name
+      code_line
+  ErrorType: 详细错误信息
+  ```
+
+### 官方影视作品管理
+- **识别机制**: 通过 `ogv_info` 字段判断是否为官方影视作品
+- **数据存储**: JSON格式存储影视作品元数据（类型、年份、集数等）
+- **分类功能**: 自动识别电影、电视剧、纪录片等类型
+- **查询接口**: 
+  - `get_official_videos()`: 获取官方影视作品列表
+  - `get_video_type_stats()`: 获取视频类型统计
+- **CLI命令**: `list-official` 专门查看官方影视作品
+- **统计展示**: 在系统统计中区分普通视频和官方影视作品
+
+### 删除视频详细记录
+- **记录机制**: 同步过程中自动记录被删除的视频详情
+- **数据结构**: 
+  ```python
+  {
+      "bvid": "视频BVID",
+      "title": "视频标题", 
+      "uploader_name": "UP主名称",
+      "collection_title": "所属收藏夹",
+      "deleted_at": "删除时间戳"
+  }
+  ```
+- **存储位置**: 
+  - 实时记录: `SyncContext.stats["deleted_videos"]`
+  - 持久化: `deletion_logs` 数据库表
+- **展示方式**:
+  - 同步完成后显示删除视频摘要
+  - CLI命令 `list-deleted` 查看历史删除记录
+  - 支持分页和时间排序
+- **统计信息**: 在同步结果中显示删除视频数量和详情
+
+### 数据库结构优化
+- **字段迁移**: 将 `is_deleted` 和 `deleted_at` 从 `collection_videos` 迁移到 `videos` 表
+- **全局删除状态**: 视频删除状态不再局限于特定收藏夹，而是全局状态
+- **自动迁移**: 应用启动时自动检查并执行数据库结构迁移
+- **向后兼容**: 迁移过程保留原有数据，确保数据完整性
+
+### 同步结果展示优化
+- **结构化输出**: 使用Rich库美化CLI输出
+- **分类统计**: 区分普通视频、官方影视作品、删除视频等
+- **错误汇总**: 统一展示同步过程中的错误信息
+- **删除汇总**: 详细列出被删除的视频信息
+- **进度追踪**: 支持中断恢复的同步任务管理
+
