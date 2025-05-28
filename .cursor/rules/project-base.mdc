@@ -22,6 +22,9 @@ alwaysApply: false
 - 🔍 支持视频搜索、状态过滤、分页查询
 - 📈 详细的收藏夹和视频统计信息
 - 🛠️ 完整的CLI管理工具（Click + Rich）
+- 🎬 官方影视作品识别和分类管理
+- 📝 详细的错误栈信息记录和调试支持
+- 🗂️ 被删除视频的详细记录和追踪
 
 ## 技术栈
 
@@ -89,11 +92,11 @@ collections (id, bilibili_fid, title, user_mid, description, cover_url, media_co
 -- UP主表
 uploaders (id, mid, name, face_url, jump_link, created_at, updated_at)
 
--- 视频表
-videos (id, bilibili_id, bvid, type, title, cover_url, local_cover_path, intro, page_count, duration, uploader_mid, attr, ctime, pubtime, first_cid, season_info, ogv_info, link, media_list_link, created_at, updated_at)
+-- 视频表 (重要字段说明见下方)
+videos (id, bilibili_id, bvid, type, title, cover_url, local_cover_path, intro, page_count, duration, uploader_mid, attr, ctime, pubtime, first_cid, season_info, ogv_info, link, media_list_link, is_deleted, deleted_at, created_at, updated_at)
 
 -- 收藏关系表（多对多）
-collection_videos (id, collection_id, video_id, fav_time, is_deleted, deleted_at, first_seen, last_seen, created_at, updated_at)
+collection_videos (id, collection_id, video_id, fav_time, first_seen, last_seen, created_at, updated_at)
 
 -- 视频统计表
 video_stats (id, video_id, collect_count, play_count, danmaku_count, reply_count, view_text, vt, play_switch, recorded_at)
@@ -101,6 +104,15 @@ video_stats (id, video_id, collect_count, play_count, danmaku_count, reply_count
 -- 删除日志表
 deletion_logs (id, collection_id, video_bvid, video_title, uploader_name, reason, deleted_at)
 ```
+
+### 重要字段说明
+- **videos.ogv_info**: 存储官方影视作品信息的JSON字符串，如果此字段有值，说明该视频是B站官方影视作品（电影、电视剧、纪录片等）
+- **videos.season_info**: 存储番剧/电视剧季度信息的JSON字符串，包含季度编号、集数等信息
+- **videos.first_cid**: 视频的第一个分P的CID，用于播放和下载
+- **videos.attr**: 视频属性标识，用于判断视频状态（如是否失效）
+- **videos.type**: 视频类型，2表示普通视频，其他值表示特殊类型内容
+- **videos.is_deleted**: 视频删除状态，从collection_videos表迁移而来，表示全局删除状态
+- **videos.deleted_at**: 视频删除时间戳
 
 ## 开发规范
 
@@ -114,20 +126,32 @@ deletion_logs (id, collection_id, video_bvid, video_title, uploader_name, reason
 
 ### 错误处理
 - 使用结构化异常处理
-- 记录详细的错误日志
+- 记录详细的错误日志和完整错误栈信息
 - API层返回标准化错误响应
 - 服务层抛出业务异常
+- 所有数据库操作包含详细的错误栈追踪
+- 同步过程中的错误和删除视频信息统一记录和展示
 
 ### 日志规范
 ```python
 # 使用统一的日志工具
 from ..utils.logger import logger
+import traceback
 
 # 日志级别使用
 logger.info("正常操作信息")
 logger.warning("警告信息") 
 logger.error("错误信息")
 logger.debug("调试信息")
+
+# 错误栈记录规范
+try:
+    # 业务逻辑
+    pass
+except Exception as e:
+    error_traceback = traceback.format_exc()
+    logger.error(f"操作失败: {e}\n错误栈:\n{error_traceback}")
+    raise
 ```
 
 ### 异步编程
@@ -194,13 +218,16 @@ GET    /api/videos/bvid/{bvid}        # 根据BVID获取视频
 
 ### 主要命令
 ```bash
-bilibili-favorites init-db           # 初始化数据库
-bilibili-favorites sync              # 同步所有收藏夹
-bilibili-favorites sync -c ID        # 同步指定收藏夹
-bilibili-favorites list-collections  # 列出收藏夹
-bilibili-favorites list-videos ID    # 列出视频
-bilibili-favorites stats             # 显示统计
-bilibili-favorites serve             # 启动Web服务
+python src\cli.py init-db           # 初始化数据库
+python src\cli.py sync              # 同步所有收藏夹
+python src\cli.py sync -c ID        # 同步指定收藏夹
+python src\cli.py list-collections  # 列出收藏夹
+python src\cli.py list-videos ID    # 列出视频
+python src\cli.py list-official     # 列出官方影视作品
+python src\cli.py list-deleted      # 列出最近被删除的视频
+python src\cli.py stats             # 显示统计（包含官方影视作品统计）
+python src\cli.py serve             # 启动Web服务
+python src\cli.py clean             # 清理中断的同步任务
 ```
 
 ## 部署和运行
@@ -299,4 +326,68 @@ gunicorn src.app:app -w 4 -k uvicorn.workers.UvicornWorker
 3. 运行完整测试
 4. 创建发布标签
 5. 部署到生产环境
+
+## 新增功能详解
+
+### 错误栈信息记录
+- **目标**: 提供完整的错误调试信息，快速定位问题根源
+- **实现**: 在所有异常处理中使用 `traceback.format_exc()` 记录完整错误栈
+- **覆盖范围**: 
+  - 数据库操作层 (BaseDAO)
+  - 同步服务层 (OptimizedSyncService)
+  - CLI命令执行
+  - 视频处理和封面下载
+- **日志格式**: 
+  ```
+  错误信息: 具体错误描述
+  错误栈:
+  Traceback (most recent call last):
+    File "...", line xxx, in function_name
+      code_line
+  ErrorType: 详细错误信息
+  ```
+
+### 官方影视作品管理
+- **识别机制**: 通过 `ogv_info` 字段判断是否为官方影视作品
+- **数据存储**: JSON格式存储影视作品元数据（类型、年份、集数等）
+- **分类功能**: 自动识别电影、电视剧、纪录片等类型
+- **查询接口**: 
+  - `get_official_videos()`: 获取官方影视作品列表
+  - `get_video_type_stats()`: 获取视频类型统计
+- **CLI命令**: `list-official` 专门查看官方影视作品
+- **统计展示**: 在系统统计中区分普通视频和官方影视作品
+
+### 删除视频详细记录
+- **记录机制**: 同步过程中自动记录被删除的视频详情
+- **数据结构**: 
+  ```python
+  {
+      "bvid": "视频BVID",
+      "title": "视频标题", 
+      "uploader_name": "UP主名称",
+      "collection_title": "所属收藏夹",
+      "deleted_at": "删除时间戳"
+  }
+  ```
+- **存储位置**: 
+  - 实时记录: `SyncContext.stats["deleted_videos"]`
+  - 持久化: `deletion_logs` 数据库表
+- **展示方式**:
+  - 同步完成后显示删除视频摘要
+  - CLI命令 `list-deleted` 查看历史删除记录
+  - 支持分页和时间排序
+- **统计信息**: 在同步结果中显示删除视频数量和详情
+
+### 数据库结构优化
+- **字段迁移**: 将 `is_deleted` 和 `deleted_at` 从 `collection_videos` 迁移到 `videos` 表
+- **全局删除状态**: 视频删除状态不再局限于特定收藏夹，而是全局状态
+- **自动迁移**: 应用启动时自动检查并执行数据库结构迁移
+- **向后兼容**: 迁移过程保留原有数据，确保数据完整性
+
+### 同步结果展示优化
+- **结构化输出**: 使用Rich库美化CLI输出
+- **分类统计**: 区分普通视频、官方影视作品、删除视频等
+- **错误汇总**: 统一展示同步过程中的错误信息
+- **删除汇总**: 详细列出被删除的视频信息
+- **进度追踪**: 支持中断恢复的同步任务管理
 

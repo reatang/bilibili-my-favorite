@@ -83,7 +83,8 @@ class OptimizedSyncService:
                     "videos_updated": 0,
                     "videos_deleted": 0,
                     "covers_downloaded": 0,
-                    "errors": [f"同步失败: {e}"]
+                    "errors": [f"同步失败: {e}"],
+                    "deleted_videos": []
                 }
     
     async def sync_single_collection(self, bilibili_fid: str) -> Dict[str, Any]:
@@ -144,7 +145,8 @@ class OptimizedSyncService:
                     "videos_updated": 0,
                     "videos_deleted": 0,
                     "covers_downloaded": 0,
-                    "errors": [f"同步收藏夹 {bilibili_fid} 失败: {e}"]
+                    "errors": [f"同步收藏夹 {bilibili_fid} 失败: {e}"],
+                    "deleted_videos": []
                 }
     
     async def list_sync_tasks(self) -> List[Dict[str, Any]]:
@@ -562,6 +564,20 @@ class OptimizedSyncService:
             logger.warning(f"未找到要删除的视频: {bvid}")
             return
             
+        # 获取收藏夹信息用于记录
+        collection = await collection_dao.get_collection_by_id(collection_id)
+        collection_title = collection["title"] if collection else f"收藏夹ID:{collection_id}"
+        
+        # 记录被删除的视频信息
+        deleted_video_info = {
+            "bvid": bvid,
+            "title": video["title"],
+            "uploader_name": video.get("uploader_name", "Unknown"),
+            "collection_title": collection_title,
+            "deleted_at": datetime.now(timezone.utc).isoformat()
+        }
+        self.context.stats["deleted_videos"].append(deleted_video_info)
+        
         # 标记视频为已删除
         await video_dao.mark_as_deleted(video["id"])
         
@@ -573,11 +589,11 @@ class OptimizedSyncService:
             collection_id=collection_id,
             video_bvid=bvid,
             video_title=video["title"],
-            uploader_name=video["uploader_name"],
+            uploader_name=video.get("uploader_name", "Unknown"),
             reason="从B站收藏夹中移除"
         )
         
-        logger.info(f"视频 '{video['title']}' (BVID: {bvid}) 已从收藏夹中删除")
+        logger.info(f"视频 '{video['title']}' (BVID: {bvid}) 已从收藏夹 '{collection_title}' 中删除")
 
 
 # 创建全局服务实例

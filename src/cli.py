@@ -138,6 +138,14 @@ def sync(collection_id: Optional[str], force: bool):
         
         console.print(table)
         
+        # 显示被删除的视频详情
+        if stats.get("deleted_videos"):
+            console.print(f"\n[bold yellow]发现 {len(stats['deleted_videos'])} 个被删除的视频[/bold yellow]")
+            for deleted_video in stats["deleted_videos"][:5]:  # 只显示前5个
+                console.print(f"  • {deleted_video['title']} (BVID: {deleted_video['bvid']}) - 来自收藏夹: {deleted_video['collection_title']}")
+            if len(stats["deleted_videos"]) > 5:
+                console.print(f"  ... 还有 {len(stats['deleted_videos']) - 5} 个被删除的视频")
+        
         if stats["errors"]:
             console.print(f"\n[bold yellow]警告: 发生了 {len(stats['errors'])} 个错误[/bold yellow]")
             for error in stats["errors"][:5]:  # 只显示前5个错误
@@ -391,7 +399,7 @@ def init_db():
 @cli.command()
 @click.option('--collection-id', '-c', type=int, help='指定收藏夹ID')
 @click.option('--limit', '-l', type=int, default=20, help='显示数量限制')
-def list_official():
+def list_official(collection_id: Optional[int], limit: int):
     """列出官方影视作品"""
     @async_command
     async def run_list():
@@ -454,6 +462,65 @@ def list_official():
             
         except Exception as e:
             console.print(f"[bold red]获取官方影视作品列表失败: {e}[/bold red]")
+    
+    run_list()
+
+
+@cli.command()
+@click.option('--limit', '-l', type=int, default=20, help='显示数量限制')
+def list_deleted(limit: int):
+    """列出最近被删除的视频"""
+    @async_command
+    async def run_list():
+        try:
+            # 查询删除日志
+            from bilibili_my_favorite.dao.base import BaseDAO
+            
+            query = """
+            SELECT dl.video_bvid, dl.video_title, dl.uploader_name, 
+                   dl.deleted_at, dl.reason, c.title as collection_title
+            FROM deletion_logs dl
+            JOIN collections c ON dl.collection_id = c.id
+            ORDER BY dl.deleted_at DESC
+            LIMIT ?
+            """
+            
+            # 使用BaseDAO执行查询
+            dao = BaseDAO()
+            rows = await dao.execute_query(query, (limit,))
+            deleted_videos = dao.rows_to_dicts(rows)
+            
+            if not deleted_videos:
+                console.print("[yellow]没有找到被删除的视频记录[/yellow]")
+                return
+            
+            table = Table(title="最近被删除的视频")
+            table.add_column("BVID", style="blue")
+            table.add_column("标题", style="green", max_width=35)
+            table.add_column("UP主", style="magenta")
+            table.add_column("收藏夹", style="cyan", max_width=25)
+            table.add_column("删除时间", style="yellow")
+            table.add_column("原因", style="dim")
+            
+            for video in deleted_videos:
+                deleted_time = video["deleted_at"][:19] if video["deleted_at"] else "未知"
+                
+                table.add_row(
+                    video["video_bvid"],
+                    video["video_title"][:32] + "..." if len(video["video_title"]) > 35 else video["video_title"],
+                    video["uploader_name"] or "Unknown",
+                    video["collection_title"][:22] + "..." if len(video["collection_title"]) > 25 else video["collection_title"],
+                    deleted_time,
+                    video["reason"] or "未知"
+                )
+            
+            console.print(table)
+            
+            if len(deleted_videos) == limit:
+                console.print(f"[dim]显示了最近 {limit} 个被删除的视频，使用 --limit 参数查看更多[/dim]")
+            
+        except Exception as e:
+            console.print(f"[bold red]获取删除记录失败: {e}[/bold red]")
     
     run_list()
 
