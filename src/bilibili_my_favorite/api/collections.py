@@ -6,7 +6,7 @@ from typing import List
 from fastapi import APIRouter, HTTPException, Depends
 from ..dao.collection_dao import collection_dao
 from ..dao.video_dao import video_dao
-from ..services.sync_service import sync_service
+from ..services.optimized_sync_service import optimized_sync_service
 from .models import (
     CollectionResponse, CollectionStatsResponse, SyncStatsResponse,
     SyncRequest, ErrorResponse, SuccessResponse
@@ -72,11 +72,11 @@ async def sync_collections(sync_request: SyncRequest = None):
         if sync_request and sync_request.collection_id:
             # 同步单个收藏夹
             logger.info(f"开始同步收藏夹: {sync_request.collection_id}")
-            stats = await sync_service.sync_single_collection(sync_request.collection_id)
+            stats = await optimized_sync_service.sync_single_collection(sync_request.collection_id)
         else:
             # 同步所有收藏夹
             logger.info("开始同步所有收藏夹")
-            stats = await sync_service.sync_all_favorites()
+            stats = await optimized_sync_service.sync_all_favorites()
         
         return stats
     except Exception as e:
@@ -89,7 +89,7 @@ async def sync_single_collection(collection_id: str):
     """同步指定的收藏夹"""
     try:
         logger.info(f"开始同步收藏夹: {collection_id}")
-        stats = await sync_service.sync_single_collection(collection_id)
+        stats = await optimized_sync_service.sync_single_collection(collection_id)
         return stats
     except Exception as e:
         logger.error(f"同步收藏夹 {collection_id} 失败: {e}")

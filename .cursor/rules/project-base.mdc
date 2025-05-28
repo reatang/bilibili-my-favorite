@@ -48,36 +48,46 @@ alwaysApply: false
 ### 分层架构设计
 ```
 src/
-
-├── app.py                 # FastAPI应用主文件
-├── cli.py                 # 命令行工具入口
-├── core/                  # 通用核心
-    ├── config.py          # 配置管理层
-├── models/                # 数据模型层
-│   └── database.py        # 数据库模型和初始化
-├── dao/                   # 数据访问层 (DAO)
-│   ├── base.py           # 基础DAO类
-│   ├── collection_dao.py # 收藏夹数据访问
-│   └── video_dao.py      # 视频数据访问
-├── services/              # 业务逻辑层
-│   ├── bilibili_service.py # B站API服务
-│   └── sync_service.py    # 同步服务
-├── api/                   # API路由层
-│   ├── models.py         # API数据模型
-│   ├── collections.py   # 收藏夹API路由
-│   └── videos.py         # 视频API路由
-└── utils/                 # 工具层
-    ├── logger.py         # 日志工具
-    └── downloader.py     # 下载工具
+├── cli.py                           # 命令行工具入口
+└── bilibili_my_favorite/            # 主要源代码包
+    ├── __init__.py                  # 包初始化文件
+    ├── app.py                       # FastAPI应用主文件
+    ├── core/                        # 核心配置层
+    │   ├── __init__.py
+    │   └── config.py                # 配置管理和环境变量
+    ├── models/                      # 数据模型层
+    │   ├── __init__.py
+    │   ├── database.py              # 数据库模型和表结构定义
+    │   └── database_migration.py    # 数据库迁移脚本
+    ├── dao/                         # 数据访问层 (DAO)
+    │   ├── __init__.py
+    │   ├── base.py                  # 基础DAO类和数据库连接管理
+    │   ├── collection_dao.py        # 收藏夹数据访问操作
+    │   └── video_dao.py             # 视频数据访问操作
+    ├── services/                    # 业务逻辑层
+    │   ├── __init__.py
+    │   ├── bilibili_service.py      # B站API服务封装
+    │   ├── optimized_sync_service.py # 优化的同步服务
+    │   └── sync_context.py          # 同步上下文和状态管理
+    ├── api/                         # API路由层
+    │   ├── __init__.py
+    │   ├── models.py                # API数据模型和响应格式
+    │   ├── collections.py           # 收藏夹API路由
+    │   └── videos.py                # 视频API路由
+    └── utils/                       # 工具层
+        ├── __init__.py
+        ├── logger.py                # 日志配置和工具
+        └── downloader.py            # 文件下载工具
 ```
 
 ### 职责分离原则
-1. **配置层**: 统一管理应用配置和环境变量
-2. **API层**: 处理HTTP请求响应，数据验证
-3. **服务层**: 核心业务逻辑，事务处理
-4. **DAO层**: 数据库操作抽象，SQL查询
-5. **模型层**: 数据结构定义，数据库初始化
-6. **工具层**: 通用功能，日志、下载等
+1. **核心配置层 (core/)**: 统一管理应用配置、环境变量和全局设置
+2. **API路由层 (api/)**: 处理HTTP请求响应、数据验证和路由分发
+3. **业务逻辑层 (services/)**: 核心业务逻辑、同步服务、事务处理和状态管理
+4. **数据访问层 (dao/)**: 数据库操作抽象、SQL查询和连接管理
+5. **数据模型层 (models/)**: 数据结构定义、数据库初始化和迁移脚本
+6. **工具层 (utils/)**: 通用功能模块，如日志记录、文件下载等
+7. **CLI层 (cli.py)**: 命令行接口，提供完整的管理工具集
 
 ## 数据库设计
 
@@ -187,13 +197,23 @@ LOG_LEVEL=INFO
 ### 目录结构
 ```
 项目根目录/
-├── src/                   # 源代码
-├── templates/             # HTML模板
-├── covers/               # 封面图片存储
-├── logs/                 # 日志文件
-├── .env                  # 环境变量
-├── bilibili_favorites.db # SQLite数据库
-└── pyproject.toml        # 项目配置
+├── src/                           # 源代码目录
+│   ├── cli.py                     # 命令行工具入口
+│   └── bilibili_my_favorite/      # 主要源代码包
+├── data/                          # 同步数据临时存储
+├── covers/                        # 视频封面图片存储
+├── logs/                          # 应用日志文件
+├── .env                           # 环境变量配置
+├── .gitignore                     # Git忽略文件配置
+├── .python-version                # Python版本指定
+├── bilibili_favorites.db          # SQLite主数据库
+├── bilibili_favorites.db-wal      # SQLite WAL日志文件
+├── bilibili_favorites.db-shm      # SQLite共享内存文件
+├── pyproject.toml                 # 项目配置和依赖管理
+├── uv.lock                        # 依赖锁定文件
+├── README.md                      # 项目说明文档
+├── LICENSE                        # 开源许可证
+└── web_server.py                  # 独立Web服务器启动脚本
 ```
 
 ## API设计规范
@@ -218,16 +238,16 @@ GET    /api/videos/bvid/{bvid}        # 根据BVID获取视频
 
 ### 主要命令
 ```bash
-python src\cli.py init-db           # 初始化数据库
-python src\cli.py sync              # 同步所有收藏夹
-python src\cli.py sync -c ID        # 同步指定收藏夹
-python src\cli.py list-collections  # 列出收藏夹
-python src\cli.py list-videos ID    # 列出视频
-python src\cli.py list-official     # 列出官方影视作品
-python src\cli.py list-deleted      # 列出最近被删除的视频
-python src\cli.py stats             # 显示统计（包含官方影视作品统计）
-python src\cli.py serve             # 启动Web服务
-python src\cli.py clean             # 清理中断的同步任务
+python src/cli.py init-db           # 初始化数据库
+python src/cli.py sync              # 同步所有收藏夹
+python src/cli.py sync -c ID        # 同步指定收藏夹
+python src/cli.py list-collections  # 列出收藏夹
+python src/cli.py list-videos ID    # 列出视频
+python src/cli.py list-official     # 列出官方影视作品
+python src/cli.py list-deleted      # 列出最近被删除的视频
+python src/cli.py stats             # 显示统计（包含官方影视作品统计）
+python src/cli.py serve             # 启动Web服务
+python src/cli.py clean             # 清理中断的同步任务
 ```
 
 ## 部署和运行
@@ -247,37 +267,40 @@ bilibili-favorites serve --reload
 ### 生产环境
 ```bash
 # 使用uvicorn直接运行
-uvicorn src.app:app --host 0.0.0.0 --port 8000
+uvicorn src.bilibili_my_favorite.app:app --host 0.0.0.0 --port 8000
 
 # 或使用gunicorn
-gunicorn src.app:app -w 4 -k uvicorn.workers.UvicornWorker
+gunicorn src.bilibili_my_favorite.app:app -w 4 -k uvicorn.workers.UvicornWorker
+
+# 使用独立Web服务器脚本
+python web_server.py
 ```
 
 ## 扩展开发指南
 
 ### 添加新API端点
-1. 在 `src/api/` 下创建或修改路由文件
-2. 在 `src/api/models.py` 中定义数据模型
-3. 在 `src/app.py` 中注册路由
+1. 在 `src/bilibili_my_favorite/api/` 下创建或修改路由文件
+2. 在 `src/bilibili_my_favorite/api/models.py` 中定义数据模型
+3. 在 `src/bilibili_my_favorite/app.py` 中注册路由
 4. 更新API文档
 
 ### 添加新服务
-1. 在 `src/services/` 下创建服务类
+1. 在 `src/bilibili_my_favorite/services/` 下创建服务类
 2. 实现业务逻辑方法
 3. 在相应的API路由中调用
 4. 添加单元测试
 
 ### 添加新DAO
-1. 继承 `BaseDAO` 类
+1. 继承 `src/bilibili_my_favorite/dao/base.py` 中的 `BaseDAO` 类
 2. 实现特定的数据访问方法
 3. 在服务层中使用
-4. 确保异步操作
+4. 确保异步操作和错误处理
 
 ### 数据库迁移
-1. 修改 `src/models/database.py` 中的表结构
-2. 实现数据迁移脚本
+1. 修改 `src/bilibili_my_favorite/models/database.py` 中的表结构
+2. 在 `src/bilibili_my_favorite/models/database_migration.py` 中实现迁移脚本
 3. 更新版本号
-4. 测试迁移过程
+4. 测试迁移过程和数据完整性
 
 ## 注意事项
 

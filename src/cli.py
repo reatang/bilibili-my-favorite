@@ -14,7 +14,6 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from bilibili_my_favorite.core.config import config
 from bilibili_my_favorite.services.bilibili_service import bilibili_service
-from bilibili_my_favorite.services.sync_service import sync_service
 from bilibili_my_favorite.services.optimized_sync_service import optimized_sync_service
 from bilibili_my_favorite.dao.collection_dao import collection_dao
 from bilibili_my_favorite.dao.video_dao import video_dao
