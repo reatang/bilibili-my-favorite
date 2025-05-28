@@ -1,6 +1,13 @@
 """
 数据库模型定义
 重新设计的表结构，更好地存储B站收藏夹数据
+
+重要字段说明：
+- videos.ogv_info: 存储官方影视作品信息的JSON字符串，如果此字段有值，说明该视频是B站官方影视作品（电影、电视剧、纪录片等）
+- videos.season_info: 存储番剧/电视剧季度信息的JSON字符串，包含季度编号、集数等信息
+- videos.first_cid: 视频的第一个分P的CID，用于播放和下载
+- videos.attr: 视频属性标识，用于判断视频状态（如是否失效）
+- videos.type: 视频类型，2表示普通视频，其他值表示特殊类型内容
 """
 import aiosqlite
 import os

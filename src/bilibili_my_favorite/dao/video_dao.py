@@ -2,6 +2,8 @@
 视频数据访问对象
 提供视频相关的数据库操作
 """
+import json
+import traceback
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from .base import BaseDAO
@@ -249,6 +251,71 @@ class VideoDAO(BaseDAO):
             stats_data.get("play_switch", 0), now
         )
         return await self.execute_insert(query, params)
+    
+    async def get_official_videos(self, collection_id: int = None, 
+                                limit: int = None, offset: int = 0) -> List[Dict[str, Any]]:
+        """获取官方影视作品列表（ogv_info不为空的视频）"""
+        base_query = """
+        SELECT v.id, v.bilibili_id, v.bvid, v.title, v.cover_url, v.local_cover_path,
+               v.intro, v.duration, v.ogv_info, v.season_info, v.is_deleted, v.deleted_at,
+               u.name as uploader_name, u.mid as uploader_mid, u.face_url as uploader_face
+        FROM videos v
+        JOIN uploaders u ON v.uploader_mid = u.mid
+        WHERE v.ogv_info IS NOT NULL AND v.ogv_info != ''
+        """
+        params = []
+        
+        # 如果指定了收藏夹，添加收藏夹过滤
+        if collection_id:
+            base_query = """
+            SELECT v.id, v.bilibili_id, v.bvid, v.title, v.cover_url, v.local_cover_path,
+                   v.intro, v.duration, v.ogv_info, v.season_info, v.is_deleted, v.deleted_at,
+                   u.name as uploader_name, u.mid as uploader_mid, u.face_url as uploader_face,
+                   cv.fav_time, cv.first_seen, cv.last_seen
+            FROM videos v
+            JOIN uploaders u ON v.uploader_mid = u.mid
+            JOIN collection_videos cv ON v.id = cv.video_id
+            WHERE v.ogv_info IS NOT NULL AND v.ogv_info != '' AND cv.collection_id = ?
+            """
+            params.append(collection_id)
+        
+        # 添加排序
+        base_query += " ORDER BY v.created_at DESC"
+        
+        # 添加分页
+        if limit:
+            base_query += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+        
+        rows = await self.execute_query(base_query, tuple(params))
+        return self.rows_to_dicts(rows)
+    
+    async def get_video_type_stats(self, collection_id: int = None) -> Dict[str, int]:
+        """获取视频类型统计（普通视频 vs 官方影视作品）"""
+        base_query = """
+        SELECT 
+            COUNT(CASE WHEN v.ogv_info IS NULL OR v.ogv_info = '' THEN 1 END) as normal_videos,
+            COUNT(CASE WHEN v.ogv_info IS NOT NULL AND v.ogv_info != '' THEN 1 END) as official_videos,
+            COUNT(*) as total_videos
+        FROM videos v
+        """
+        params = []
+        
+        if collection_id:
+            base_query += """
+            JOIN collection_videos cv ON v.id = cv.video_id
+            WHERE cv.collection_id = ?
+            """
+            params.append(collection_id)
+        
+        row = await self.execute_one(base_query, tuple(params))
+        result = self.row_to_dict(row)
+        
+        return {
+            "normal_videos": result.get("normal_videos", 0),
+            "official_videos": result.get("official_videos", 0),
+            "total_videos": result.get("total_videos", 0)
+        }
 
 
 # 创建全局实例

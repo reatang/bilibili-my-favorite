@@ -3,7 +3,9 @@
 提供同步和管理功能的CLI接口
 """
 import asyncio
+import json
 import sys
+import traceback
 from typing import Optional
 import click
 from rich.console import Console
@@ -39,8 +41,9 @@ def async_command(f):
                 # 运行原始函数
                 return await f(*args, **kwargs)
             except Exception as e:
+                error_traceback = traceback.format_exc()
                 console.print(f"[bold red]执行失败: {e}[/bold red]")
-                logger.error(f"命令执行失败: {e}")
+                logger.error(f"命令执行失败: {e}\n错误栈:\n{error_traceback}")
                 raise
             finally:
                 # 关闭数据库连接
@@ -115,8 +118,9 @@ def sync(collection_id: Optional[str], force: bool):
                     
                     progress.update(task, completed=True)
         except Exception as e:
+            error_traceback = traceback.format_exc()
             console.print(f"[bold red]同步失败: {e}[/bold red]")
-            logger.error(f"同步失败: {e}")
+            logger.error(f"同步失败: {e}\n错误栈:\n{error_traceback}")
             return
         
         # 显示同步结果
@@ -264,12 +268,19 @@ def stats():
             total_videos = 0
             total_available = 0
             total_deleted = 0
+            total_official = 0
+            total_normal = 0
             
             for collection in collections:
                 stats = await collection_dao.get_collection_stats(collection["id"])
                 total_videos += stats.get("total_videos", 0)
                 total_available += stats.get("available_videos", 0)
                 total_deleted += stats.get("deleted_videos", 0)
+                
+                # 获取视频类型统计
+                type_stats = await video_dao.get_video_type_stats(collection["id"])
+                total_official += type_stats.get("official_videos", 0)
+                total_normal += type_stats.get("normal_videos", 0)
             
             # 显示总体统计
             table = Table(title="系统统计")
@@ -280,6 +291,8 @@ def stats():
             table.add_row("视频总数", str(total_videos))
             table.add_row("可用视频", str(total_available))
             table.add_row("已删除视频", str(total_deleted))
+            table.add_row("普通视频", str(total_normal))
+            table.add_row("官方影视作品", str(total_official))
             
             console.print(table)
             
@@ -291,21 +304,26 @@ def stats():
                 detail_table.add_column("总视频", style="cyan")
                 detail_table.add_column("可用", style="blue")
                 detail_table.add_column("已删除", style="red")
-                detail_table.add_column("删除率", style="yellow")
+                detail_table.add_column("官方影视", style="yellow")
+                detail_table.add_column("删除率", style="dim")
                 
                 for collection in collections[:10]:  # 只显示前10个
                     stats = await collection_dao.get_collection_stats(collection["id"])
+                    type_stats = await video_dao.get_video_type_stats(collection["id"])
+                    
                     total = stats.get("total_videos", 0)
                     deleted = stats.get("deleted_videos", 0)
                     available = stats.get("available_videos", 0)
+                    official = type_stats.get("official_videos", 0)
                     
                     delete_rate = f"{(deleted / total * 100):.1f}%" if total > 0 else "0%"
                     
                     detail_table.add_row(
-                        collection["title"][:30] + "..." if len(collection["title"]) > 33 else collection["title"],
+                        collection["title"][:25] + "..." if len(collection["title"]) > 28 else collection["title"],
                         str(total),
                         str(available),
                         str(deleted),
+                        str(official),
                         delete_rate
                     )
                 
@@ -368,6 +386,76 @@ def init_db():
             console.print(f"[bold red]数据库初始化失败: {e}[/bold red]")
     
     run_init()
+
+
+@cli.command()
+@click.option('--collection-id', '-c', type=int, help='指定收藏夹ID')
+@click.option('--limit', '-l', type=int, default=20, help='显示数量限制')
+def list_official():
+    """列出官方影视作品"""
+    @async_command
+    async def run_list():
+        try:
+            # 获取官方影视作品
+            videos = await video_dao.get_official_videos(
+                collection_id=collection_id,
+                limit=limit
+            )
+            
+            if not videos:
+                if collection_id:
+                    console.print(f"[yellow]收藏夹 {collection_id} 中没有找到官方影视作品[/yellow]")
+                else:
+                    console.print("[yellow]没有找到官方影视作品[/yellow]")
+                return
+            
+            # 显示收藏夹信息
+            if collection_id:
+                collection = await collection_dao.get_collection_by_id(collection_id)
+                if collection:
+                    console.print(f"[bold blue]收藏夹: {collection['title']}[/bold blue]")
+            
+            table = Table(title="官方影视作品列表")
+            table.add_column("BVID", style="blue")
+            table.add_column("标题", style="green", max_width=40)
+            table.add_column("UP主", style="magenta")
+            table.add_column("状态", style="yellow")
+            table.add_column("类型", style="cyan")
+            
+            for video in videos:
+                status_text = "已删除" if video["is_deleted"] else "正常"
+                
+                # 解析ogv_info来判断类型
+                ogv_type = "官方影视"
+                try:
+                    if video["ogv_info"]:
+                        ogv_data = json.loads(video["ogv_info"])
+                        if "movie" in str(ogv_data).lower():
+                            ogv_type = "电影"
+                        elif "tv" in str(ogv_data).lower() or "episode" in str(ogv_data).lower():
+                            ogv_type = "电视剧"
+                        elif "documentary" in str(ogv_data).lower():
+                            ogv_type = "纪录片"
+                except:
+                    pass
+                
+                table.add_row(
+                    video["bvid"],
+                    video["title"][:37] + "..." if len(video["title"]) > 40 else video["title"],
+                    video["uploader_name"],
+                    status_text,
+                    ogv_type
+                )
+            
+            console.print(table)
+            
+            if len(videos) == limit:
+                console.print(f"[dim]显示了前 {limit} 个官方影视作品，使用 --limit 参数查看更多[/dim]")
+            
+        except Exception as e:
+            console.print(f"[bold red]获取官方影视作品列表失败: {e}[/bold red]")
+    
+    run_list()
 
 
 @cli.command()

@@ -1,6 +1,11 @@
 """
 数据库迁移脚本
 将 is_deleted 和 deleted_at 字段从 collection_videos 表移动到 videos 表
+
+字段说明：
+- ogv_info: 存储官方影视作品信息的JSON字符串，如果此字段有值，说明该视频是B站官方影视作品
+- season_info: 存储番剧/电视剧季度信息的JSON字符串
+- first_cid: 视频的第一个分P的CID
 """
 import aiosqlite
 from datetime import datetime, timezone

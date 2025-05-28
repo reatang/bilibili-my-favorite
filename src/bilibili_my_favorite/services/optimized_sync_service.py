@@ -3,7 +3,9 @@
 实现三步式同步流程以减少API调用
 """
 import asyncio
+import json
 import random
+import traceback
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from pathlib import Path
@@ -354,7 +356,8 @@ class OptimizedSyncService:
                 
             except Exception as e:
                 error_msg = f"处理收藏夹 {collection_data.get('title', 'Unknown')} 失败: {e}"
-                logger.error(error_msg)
+                error_traceback = traceback.format_exc()
+                logger.error(f"{error_msg}\n错误栈:\n{error_traceback}")
                 self.context.stats["errors"].append(error_msg)
         
         logger.info("所有收藏夹数据处理完成")
@@ -397,7 +400,8 @@ class OptimizedSyncService:
                 api_bvids.add(video_data["bv_id"])
             except Exception as e:
                 error_msg = f"处理视频 {video_data.get('title', 'Unknown')} 失败: {e}"
-                logger.error(error_msg)
+                error_traceback = traceback.format_exc()
+                logger.error(f"{error_msg}\n错误栈:\n{error_traceback}")
                 self.context.stats["errors"].append(error_msg)
         
         # 标记已删除的视频
@@ -408,7 +412,8 @@ class OptimizedSyncService:
                 self.context.stats["videos_deleted"] += 1
             except Exception as e:
                 error_msg = f"标记视频 {bvid} 为已删除失败: {e}"
-                logger.error(error_msg)
+                error_traceback = traceback.format_exc()
+                logger.error(f"{error_msg}\n错误栈:\n{error_traceback}")
                 self.context.stats["errors"].append(error_msg)
         
         # 更新收藏夹同步时间
@@ -448,9 +453,9 @@ class OptimizedSyncService:
             "attr": video_data.get("attr", 0),
             "ctime": video_data.get("ctime"),
             "pubtime": video_data.get("pubtime"),
-            "first_cid": video_data.get("ugc", {}).get("first_cid") if video_data.get("ugc") else None,
-            "season_info": video_data.get("season"),
-            "ogv_info": video_data.get("ogv"),
+            "first_cid": str(video_data.get("ugc", {}).get("first_cid")) if video_data.get("ugc", {}).get("first_cid") else None,
+            "season_info": json.dumps(video_data.get("season"), ensure_ascii=False) if video_data.get("season") else None,
+            "ogv_info": json.dumps(video_data.get("ogv"), ensure_ascii=False) if video_data.get("ogv") else None,
             "link": video_data.get("link"),
             "media_list_link": video_data.get("media_list_link")
         }
@@ -547,7 +552,8 @@ class OptimizedSyncService:
                 self.context.stats["covers_downloaded"] += 1
                 
         except Exception as e:
-            logger.error(f"下载封面失败: BVID {bvid}, 错误: {e}")
+            error_traceback = traceback.format_exc()
+            logger.error(f"下载封面失败: BVID {bvid}, 错误: {e}\n错误栈:\n{error_traceback}")
     
     async def _mark_video_deleted(self, bvid: str, collection_id: int):
         """标记视频为已删除"""

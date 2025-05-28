@@ -7,6 +7,7 @@ import asyncio
 import atexit
 import signal
 import sys
+import traceback
 from typing import Optional, Dict, Any, List, ClassVar
 from ..core.config import config
 from ..utils.logger import logger
@@ -124,7 +125,8 @@ class BaseDAO:
             cursor = await self.db.execute(query, params)
             return await cursor.fetchall()
         except Exception as e:
-            logger.error(f"执行查询失败: {query}, 参数: {params}, 错误: {e}")
+            error_traceback = traceback.format_exc()
+            logger.error(f"执行查询失败: {query}, 参数: {params}, 错误: {e}\n错误栈:\n{error_traceback}")
             raise
     
     async def execute_one(self, query: str, params: tuple = ()) -> Optional[aiosqlite.Row]:
@@ -133,7 +135,8 @@ class BaseDAO:
             cursor = await self.db.execute(query, params)
             return await cursor.fetchone()
         except Exception as e:
-            logger.error(f"执行单条查询失败: {query}, 参数: {params}, 错误: {e}")
+            error_traceback = traceback.format_exc()
+            logger.error(f"执行单条查询失败: {query}, 参数: {params}, 错误: {e}\n错误栈:\n{error_traceback}")
             raise
     
     async def execute_insert(self, query: str, params: tuple = ()) -> int:
@@ -143,7 +146,8 @@ class BaseDAO:
             await self.db.commit()
             return cursor.lastrowid
         except Exception as e:
-            logger.error(f"执行插入失败: {query}, 参数: {params}, 错误: {e}")
+            error_traceback = traceback.format_exc()
+            logger.error(f"执行插入失败: {query}, 参数: {params}, 错误: {e}\n错误栈:\n{error_traceback}")
             await self.db.rollback()
             raise
     
@@ -154,7 +158,8 @@ class BaseDAO:
             await self.db.commit()
             return cursor.rowcount
         except Exception as e:
-            logger.error(f"执行更新失败: {query}, 参数: {params}, 错误: {e}")
+            error_traceback = traceback.format_exc()
+            logger.error(f"执行更新失败: {query}, 参数: {params}, 错误: {e}\n错误栈:\n{error_traceback}")
             await self.db.rollback()
             raise
     
@@ -165,7 +170,8 @@ class BaseDAO:
             await self.db.commit()
             return cursor.rowcount
         except Exception as e:
-            logger.error(f"执行删除失败: {query}, 参数: {params}, 错误: {e}")
+            error_traceback = traceback.format_exc()
+            logger.error(f"执行删除失败: {query}, 参数: {params}, 错误: {e}\n错误栈:\n{error_traceback}")
             await self.db.rollback()
             raise
     
@@ -175,7 +181,8 @@ class BaseDAO:
             await self.db.executemany(query, params_list)
             await self.db.commit()
         except Exception as e:
-            logger.error(f"批量执行失败: {query}, 错误: {e}")
+            error_traceback = traceback.format_exc()
+            logger.error(f"批量执行失败: {query}, 错误: {e}\n错误栈:\n{error_traceback}")
             await self.db.rollback()
             raise
     
@@ -190,7 +197,8 @@ class BaseDAO:
                 await self.db.execute(query, params)
             await self.db.commit()
         except Exception as e:
-            logger.error(f"事务执行失败: {e}")
+            error_traceback = traceback.format_exc()
+            logger.error(f"事务执行失败: {e}\n错误栈:\n{error_traceback}")
             await self.db.rollback()
             raise
     
