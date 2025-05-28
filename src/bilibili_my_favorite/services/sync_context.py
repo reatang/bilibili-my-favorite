@@ -193,6 +193,22 @@ class SyncContext:
         self.save_lock_file()
         logger.info(f"开始处理收藏夹: {collection.get('title', 'Unknown')} (ID: {collection.get('id')})")
     
+    def mark_collection_data_fetched(self, collection_id: str):
+        """标记收藏夹数据拉取完成（但还未处理）"""
+        # 从待处理列表中移除
+        self.collections_to_process = [
+            c for c in self.collections_to_process 
+            if str(c.get('id')) != str(collection_id)
+        ]
+        
+        # 清除当前收藏夹状态
+        if self.current_collection and str(self.current_collection.get('id')) == str(collection_id):
+            self.current_collection = None
+            self.current_page = 1
+        
+        self.save_lock_file()
+        logger.info(f"收藏夹 {collection_id} 数据拉取完成")
+    
     def mark_collection_completed(self, collection_id: str):
         """标记收藏夹处理完成"""
         if collection_id not in self.processed_collections:

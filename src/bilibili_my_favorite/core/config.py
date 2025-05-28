@@ -24,12 +24,19 @@ class Config(BaseSettings):
     COVERS_DIR: Optional[Path] = "./covers"
     TEMPLATES_DIR: Optional[Path] = "./templates"
     DATA_DIR: Optional[Path] = "./data"
+    VIDEOS_DIR: Optional[Path] = "./videos"
 
-    # B站API配置
+
+    # B站API配置 与原始cookies配置 二选一
     USER_DEDE_USER_ID: Optional[str] = None
     USER_SESSDATA: Optional[str] = None
     USER_BILI_JCT: Optional[str] = None
     USER_BUVID3: Optional[str] = None
+
+    # 原始cookies + SuperCredential 可以获得更高级的功能
+    RAW_COOKIES: Optional[str] = None
+
+    # 用户配置
     USER_AC_TIME_VALUE: Optional[str] = None
 
     # Web服务器配置
@@ -82,6 +89,14 @@ class Config(BaseSettings):
         else:
             self.DATA_DIR = self.DATA_DIR.resolve()
 
+        # VIDEOS_DIR
+        if self.VIDEOS_DIR is None:
+            self.VIDEOS_DIR = base_dir / "videos"
+        elif not self.VIDEOS_DIR.is_absolute():
+            self.VIDEOS_DIR = (base_dir / self.VIDEOS_DIR).resolve()
+        else:
+            self.VIDEOS_DIR = self.VIDEOS_DIR.resolve()
+
         # LOG_FILE
         if self.LOG_FILE is None:
             self.LOG_FILE = base_dir / "logs" / "app.log"
@@ -101,6 +116,9 @@ class Config(BaseSettings):
         return f"sqlite:///{self.DATABASE_PATH}"
 
     def validate_bilibili_credentials(self) -> bool:
+        if self.RAW_COOKIES is not None and len(self.RAW_COOKIES) > 0:
+            return True
+        
         """验证B站凭据是否完整"""
         required_vars = [
             self.USER_DEDE_USER_ID,
@@ -118,6 +136,8 @@ class Config(BaseSettings):
              self.COVERS_DIR.mkdir(parents=True, exist_ok=True)
         if not self.DATA_DIR.exists():
              self.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        if not self.VIDEOS_DIR.exists():
+             self.VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
         if not self.LOG_FILE.parent.exists():
              self.LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 

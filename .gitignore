@@ -18,3 +18,4 @@ templates/
 data/
 logs/
 bilibili_favorites.db*
+videos/

@@ -240,16 +240,25 @@ class OptimizedSyncService:
         # 如果有当前正在处理的收藏夹，从它开始
         if self.context.current_collection:
             # 继续处理当前收藏夹
+            current_collection_id = str(self.context.current_collection.get('id'))
             await self._fetch_single_collection_data(
                 self.context.current_collection, 
                 start_page=self.context.current_page
             )
+            # 数据拉取完成后，标记该收藏夹数据拉取完成
+            self.context.mark_collection_data_fetched(current_collection_id)
         
         # 处理剩余的收藏夹
-        for collection_data in self.context.collections_to_process:
+        # 使用副本遍历，避免在遍历过程中修改列表
+        collections_copy = self.context.collections_to_process.copy()
+        for collection_data in collections_copy:
             try:
+                collection_id = str(collection_data.get('id'))
                 self.context.set_current_collection(collection_data)
                 await self._fetch_single_collection_data(collection_data)
+                
+                # 数据拉取完成后，标记该收藏夹数据拉取完成
+                self.context.mark_collection_data_fetched(collection_id)
                 
             except Exception as e:
                 error_msg = f"获取收藏夹 {collection_data.get('title', 'Unknown')} 数据失败: {e}"
@@ -442,6 +451,7 @@ class OptimizedSyncService:
         )
         
         # 准备视频数据
+        ugc_data = video_data.get("ugc") or {}
         processed_video_data = {
             "bilibili_id": str(video_data["id"]),
             "bvid": bvid,
@@ -455,7 +465,7 @@ class OptimizedSyncService:
             "attr": video_data.get("attr", 0),
             "ctime": video_data.get("ctime"),
             "pubtime": video_data.get("pubtime"),
-            "first_cid": str(video_data.get("ugc", {}).get("first_cid")) if video_data.get("ugc", {}).get("first_cid") else None,
+            "first_cid": str(ugc_data.get("first_cid")) if ugc_data.get("first_cid") else None,
             "season_info": json.dumps(video_data.get("season"), ensure_ascii=False) if video_data.get("season") else None,
             "ogv_info": json.dumps(video_data.get("ogv"), ensure_ascii=False) if video_data.get("ogv") else None,
             "link": video_data.get("link"),

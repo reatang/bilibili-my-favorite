@@ -8,6 +8,9 @@ from typing import Optional
 import httpx
 from ..core.config import config
 from .logger import logger
+import os
+
+from bilibili_api import video, Credential, get_client
 
 
 class CoverDownloader:
@@ -94,5 +97,34 @@ class CoverDownloader:
         return results
 
 
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+    "Referer": "https://www.bilibili.com",
+}
+
+class VideoDownloader:
+    """视频下载器"""
+
+    def __init__(self):
+        self.timeout = config.DOWNLOAD_TIMEOUT
+        self.videos_dir = config.VIDEOS_DIR
+
+        if not os.path.exists(self.videos_dir):
+            os.makedirs(self.videos_dir)
+
+    async def download_video(self, url: str, out: str, intro: str):
+        dwn_id = await get_client().download_create(url, HEADERS)
+        bts = 0
+        tot = get_client().download_content_length(dwn_id)
+        with open(out, "wb") as file:
+            while True:
+                bts += file.write(await get_client().download_chunk(dwn_id))
+                print(f"{intro} - {out} [{bts} / {tot}]", end="\r")
+                if bts == tot:
+                    break
+        print()
+
 # 创建全局下载器实例
 cover_downloader = CoverDownloader() 
+video_downloader = VideoDownloader()

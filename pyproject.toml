@@ -19,6 +19,13 @@ dependencies = [
     "click>=8.1.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
+    "brotli>=1.1.0",
+    "pyjwt>=2.10.1",
+    "qrcode>=8.2",
+    "qrcode-terminal>=0.8",
+    "apscheduler>=3.11.0",
+    "beautifulsoup4>=4.13.4",
+    "lxml>=5.4.0",
 ]
 
 [project.scripts]

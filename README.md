@@ -53,14 +53,18 @@ pip install -e .
 
 ### 4. 配置环境变量
 
-创建 `.env` 文件并配置B站API凭据：
+复制 `.env.example` 到 `.env` 文件并配置B站API凭据：
 
 ```env
-# B站API凭据 (必需)
+# B站API凭据，基本功能
 USER_DEDE_USER_ID=your_user_id
 USER_SESSDATA=your_sessdata
 USER_BILI_JCT=your_bili_jct
 USER_BUVID3=your_buvid3
+
+# 高级的登录凭证，使用原始COOKIE可以拥有更完整的功能，比如下载1080P的视频
+RAW_COOKIES="格式：k1=v1; k2=v2; k3=v3"
+
 USER_AC_TIME_VALUE=your_ac_time_value
 
 # Web服务器配置 (可选)
@@ -124,11 +128,14 @@ python src/cli.py serve
 # 清理中断的同步任务
 python src/cli.py clean
 
+# 视频下载
+python src/cli.py download <BVID>
+
 # 查看帮助
 python src/cli.py --help
 ```
 
-### Web界面
+### Web界面（还没debug，不一定能用）
 
 启动Web服务器后，访问 `http://localhost:8000` 使用Web界面：
 
@@ -137,16 +144,6 @@ python src/cli.py --help
 - **同步管理**: 执行同步操作，查看同步进度和结果
 - **统计信息**: 查看详细的数据统计和分析
 - **官方影视**: 专门的官方影视作品管理页面
-
-### 独立Web服务器
-
-```bash
-# 使用独立Web服务器脚本
-python web_server.py
-
-# 或直接使用uvicorn
-uvicorn src.bilibili_my_favorite.app:app --host 0.0.0.0 --port 8000
-```
 
 ### API接口
 
@@ -193,27 +190,6 @@ uvicorn src.bilibili_my_favorite.app:app --host 0.0.0.0 --port 8000
 - **连接管理**: 单例模式的数据库连接管理
 - **自动迁移**: 应用启动时自动检查并执行数据库迁移
 - **性能调优**: 优化缓存大小、同步模式等参数
-
-## 数据库结构
-
-系统使用SQLite数据库，采用WAL模式优化性能，包含以下主要表：
-
-### 核心表结构
-
-- **users**: 用户信息 (id, mid, name, face_url, jump_link, created_at, updated_at)
-- **collections**: 收藏夹信息 (id, bilibili_fid, title, user_mid, description, cover_url, media_count, last_synced, created_at, updated_at)
-- **uploaders**: UP主信息 (id, mid, name, face_url, jump_link, created_at, updated_at)
-- **videos**: 视频详细信息 (包含官方影视作品标识、删除状态等)
-- **collection_videos**: 收藏关系表 (多对多关系)
-- **video_stats**: 视频统计信息 (播放量、点赞数等)
-- **deletion_logs**: 删除记录日志 (追踪被删除的视频)
-
-### 重要字段说明
-
-- **videos.ogv_info**: 官方影视作品信息 (JSON格式)
-- **videos.season_info**: 番剧/电视剧季度信息 (JSON格式)
-- **videos.is_deleted**: 全局删除状态标识
-- **videos.deleted_at**: 删除时间戳
 
 ## 常见问题
 

@@ -6,9 +6,10 @@ import asyncio
 import random
 from typing import List, Dict, Any, Optional
 from ..core.config import config
+from ..core.credential import SuperCredential
 from ..utils.logger import logger
 
-from bilibili_api import favorite_list
+from bilibili_api import favorite_list, video
 
 
 
@@ -31,12 +32,15 @@ class BilibiliService:
             request_settings.set("impersonate", "chrome136")
             
             if config.validate_bilibili_credentials():
-                self.credential = Credential(
-                    sessdata=config.USER_SESSDATA,
-                    bili_jct=config.USER_BILI_JCT,
-                    buvid3=config.USER_BUVID3,
-                    ac_time_value=config.USER_AC_TIME_VALUE,
-                    dedeuserid=config.USER_DEDE_USER_ID,
+                if config.RAW_COOKIES is not None and len(config.RAW_COOKIES) > 0:
+                    self.credential = SuperCredential.from_raw_cookies(config.RAW_COOKIES, config.USER_AC_TIME_VALUE)
+                else:
+                    self.credential = Credential(
+                        sessdata=config.USER_SESSDATA,
+                        bili_jct=config.USER_BILI_JCT,
+                        buvid3=config.USER_BUVID3,
+                        ac_time_value=config.USER_AC_TIME_VALUE,
+                        dedeuserid=config.USER_DEDE_USER_ID,
                 )
                 logger.info("B站API凭据初始化成功")
             else:
@@ -159,10 +163,10 @@ class BilibiliService:
         
         try:
             # 这里可以添加获取单个视频详细信息的逻辑
-            # bilibili_api 库可能有相应的方法
+            v = video.Video(bvid=bvid)
             logger.info(f"获取视频 {bvid} 的详细信息")
-            # 暂时返回None，实际实现需要根据bilibili_api库的具体方法
-            return None
+            video_info = await v.get_info()
+            return video_info
             
         except Exception as e:
             logger.error(f"获取视频 {bvid} 信息失败: {e}")
