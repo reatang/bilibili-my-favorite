@@ -6,11 +6,20 @@ import json
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional, Set
+from typing import Dict, Any, List, Optional, Set, TypedDict
 from pathlib import Path
 from ..core.config import config
 from ..utils.logger import logger
 
+# {'id': 62132569, 'fid': 621325, 'mid': 142769, 'attr': 0, 'title': '默认收藏夹', 'fav_state': 0, 'media_count': 835}
+class ProcessCollection(TypedDict):
+    id: str
+    fid: str
+    mid: str
+    attr: int
+    title: str
+    fav_state: int
+    media_count: int
 
 class SyncContext:
     """同步上下文管理器"""
@@ -21,11 +30,13 @@ class SyncContext:
         self.data_dir = Path(config.DATA_DIR) / f"sync_data_{self.task_id}"
         
         # 同步状态
-        self.status = "initializing"  # initializing, fetching, processing, completed, failed
-        self.collections_to_process: List[Dict[str, Any]] = []
-        self.current_collection: Optional[Dict[str, Any]] = None
+        self.status = "initializing"  # initializing, fetching, processing, downloading, completed, failed
+        self.collections_to_process: List[ProcessCollection] = []
+        self.fetched_collections: List[ProcessCollection] = []     # 已获取数据，待处理入库
+        self.current_collection: Optional[ProcessCollection] = None
         self.current_page = 1
-        self.processed_collections: List[str] = []
+        self.processed_collections: List[ProcessCollection] = []   # 已处理入库，待下载封面
+        self.downloaded_collections: List[ProcessCollection] = []
         self.failed_collections: List[Dict[str, Any]] = []
         
         # 统计信息
@@ -53,9 +64,11 @@ class SyncContext:
                 "task_id": self.task_id,
                 "status": self.status,
                 "collections_to_process": self.collections_to_process,
+                "fetched_collections": self.fetched_collections,
                 "current_collection": self.current_collection,
                 "current_page": self.current_page,
                 "processed_collections": self.processed_collections,
+                "downloaded_collections": self.downloaded_collections,
                 "failed_collections": self.failed_collections,
                 "stats": self.stats,
                 "created_at": self.created_at,
@@ -81,9 +94,11 @@ class SyncContext:
             context = cls(task_id=lock_data["task_id"])
             context.status = lock_data["status"]
             context.collections_to_process = lock_data["collections_to_process"]
+            context.fetched_collections = lock_data["fetched_collections"]
             context.current_collection = lock_data["current_collection"]
             context.current_page = lock_data["current_page"]
             context.processed_collections = lock_data["processed_collections"]
+            context.downloaded_collections = lock_data["downloaded_collections"]
             context.failed_collections = lock_data["failed_collections"]
             context.stats = lock_data["stats"]
             context.created_at = lock_data["created_at"]
@@ -194,11 +209,76 @@ class SyncContext:
         logger.info(f"开始处理收藏夹: {collection.get('title', 'Unknown')} (ID: {collection.get('id')})")
     
     def mark_collection_data_fetched(self, collection_id: str):
-        """标记收藏夹数据拉取完成（但还未处理）"""
-        # 从待处理列表中移除
-        self.collections_to_process = [
-            c for c in self.collections_to_process 
-            if str(c.get('id')) != str(collection_id)
+        """标记收藏夹数据拉取完成（移动到已获取列表）"""
+        # 找到对应的收藏夹
+        collection_to_move = None
+        for collection in self.collections_to_process:
+            if str(collection.get('id')) == str(collection_id):
+                collection_to_move = collection
+                break
+        
+        # 如果在collections_to_process中找到，则移动到fetched_collections
+        if collection_to_move:
+            self.collections_to_process = [
+                c for c in self.collections_to_process 
+                if str(c.get('id')) != str(collection_id)
+            ]
+            self.fetched_collections.append(collection_to_move)
+        
+        # 清除当前收藏夹状态，准备进入处理阶段
+        if self.current_collection and str(self.current_collection.get('id')) == str(collection_id):
+            self.current_collection = None
+            self.current_page = 1
+        
+        self.save_lock_file()
+        logger.info(f"收藏夹 {collection_id} 数据拉取完成，移动到已获取列表")
+    
+    def mark_collection_completed(self, collection: Dict[str, Any]):
+        """标记收藏夹处理完成（移动到已处理列表）"""
+        collection_id = str(collection.get('id'))
+        
+        # 检查是否已在processed_collections中
+        is_processed = any(
+            str(processed_collection.get('id')) == collection_id 
+            for processed_collection in self.processed_collections
+        )
+        
+        if not is_processed:
+            self.processed_collections.append(collection)
+        
+        # 从fetched_collections中移除
+        self.fetched_collections = [
+            c for c in self.fetched_collections 
+            if str(c.get('id')) != collection_id
+        ]
+        
+        # 清除当前收藏夹状态
+        if self.current_collection and str(self.current_collection.get('id')) == str(collection_id):
+            self.current_collection = None
+            self.current_page = 1
+        
+        self.stats["collections_processed"] += 1
+        self.save_lock_file()
+        
+        logger.info(f"收藏夹 {collection.get('title', 'Unknown')} (ID: {collection_id}) 处理完成，移动到已处理列表")
+    
+    def mark_collection_downloaded(self, collection: Dict[str, Any]):
+        """标记收藏夹下载完成（移动到已下载列表）"""
+        collection_id = str(collection.get('id'))
+        
+        # 检查是否已在downloaded_collections中
+        is_downloaded = any(
+            str(downloaded_collection.get('id')) == collection_id 
+            for downloaded_collection in self.downloaded_collections
+        )
+        
+        if not is_downloaded:
+            self.downloaded_collections.append(collection)
+        
+        # 从processed_collections中移除
+        self.processed_collections = [
+            c for c in self.processed_collections 
+            if str(c.get('id')) != collection_id
         ]
         
         # 清除当前收藏夹状态
@@ -207,28 +287,12 @@ class SyncContext:
             self.current_page = 1
         
         self.save_lock_file()
-        logger.info(f"收藏夹 {collection_id} 数据拉取完成")
-    
-    def mark_collection_completed(self, collection_id: str):
-        """标记收藏夹处理完成"""
-        if collection_id not in self.processed_collections:
-            self.processed_collections.append(collection_id)
-        
-        # 从待处理列表中移除
-        self.collections_to_process = [
-            c for c in self.collections_to_process 
-            if str(c.get('id')) != str(collection_id)
-        ]
-        
-        self.current_collection = None
-        self.current_page = 1
-        self.stats["collections_processed"] += 1
-        self.save_lock_file()
-        
-        logger.info(f"收藏夹 {collection_id} 处理完成")
+        logger.info(f"收藏夹 {collection.get('title', 'Unknown')} (ID: {collection_id}) 下载完成，移动到已下载列表")
     
     def mark_collection_failed(self, collection: Dict[str, Any], error: str):
         """标记收藏夹处理失败"""
+        collection_id = str(collection.get('id'))
+        
         failed_info = {
             "collection": collection,
             "error": error,
@@ -237,12 +301,31 @@ class SyncContext:
         self.failed_collections.append(failed_info)
         self.stats["errors"].append(f"收藏夹 {collection.get('title', 'Unknown')}: {error}")
         
-        # 从待处理列表中移除
-        collection_id = str(collection.get('id'))
+        # 从所有相关列表中移除
         self.collections_to_process = [
             c for c in self.collections_to_process 
             if str(c.get('id')) != collection_id
         ]
+        
+        self.fetched_collections = [
+            c for c in self.fetched_collections 
+            if str(c.get('id')) != collection_id
+        ]
+        
+        self.processed_collections = [
+            c for c in self.processed_collections 
+            if str(c.get('id')) != collection_id
+        ]
+        
+        self.downloaded_collections = [
+            c for c in self.downloaded_collections 
+            if str(c.get('id')) != collection_id
+        ]
+        
+        # 清除当前收藏夹状态
+        if self.current_collection and str(self.current_collection.get('id')) == str(collection_id):
+            self.current_collection = None
+            self.current_page = 1
         
         self.save_lock_file()
         logger.error(f"收藏夹 {collection.get('title', 'Unknown')} 处理失败: {error}")
@@ -264,13 +347,17 @@ class SyncContext:
     def is_resumable(self) -> bool:
         """检查是否可以恢复同步"""
         return (
-            self.status in ["fetching", "processing"] and
-            (self.collections_to_process or self.current_collection)
+            self.status in ["fetching", "processing", "downloading"] and
+            (self.collections_to_process or self.fetched_collections or 
+             self.processed_collections or self.current_collection)
         )
     
     def get_progress_info(self) -> Dict[str, Any]:
         """获取进度信息"""
-        total_collections = len(self.processed_collections) + len(self.collections_to_process)
+        total_collections = (len(self.collections_to_process) + 
+                           len(self.fetched_collections) +
+                           len(self.processed_collections) + 
+                           len(self.downloaded_collections))
         if self.current_collection:
             total_collections += 1
         
@@ -278,8 +365,11 @@ class SyncContext:
             "task_id": self.task_id,
             "status": self.status,
             "total_collections": total_collections,
+            "collections_to_process": len(self.collections_to_process),
+            "fetched_collections": len(self.fetched_collections),
             "processed_collections": len(self.processed_collections),
-            "remaining_collections": len(self.collections_to_process),
+            "downloaded_collections": len(self.downloaded_collections),
+            "failed_collections": len(self.failed_collections),
             "current_collection": self.current_collection.get('title') if self.current_collection else None,
             "current_page": self.current_page,
             "stats": self.stats,
