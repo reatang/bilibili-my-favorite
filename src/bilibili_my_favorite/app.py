@@ -15,6 +15,7 @@ from bilibili_my_favorite.utils.logger import logger
 from bilibili_my_favorite.api.collections import router as collections_router
 from bilibili_my_favorite.api.videos import router as videos_router
 from bilibili_my_favorite.dao.base import BaseDAO
+from bilibili_my_favorite.api.models import SyncRequest
 
 from dotenv import load_dotenv
 
@@ -49,6 +50,12 @@ if config.COVERS_DIR.exists():
     logger.info(f"已挂载封面目录: {config.COVERS_DIR}")
 else:
     logger.warning(f"封面目录不存在: {config.COVERS_DIR}")
+
+# 挂载静态文件目录
+static_dir = Path("static")
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+    logger.info(f"已挂载静态文件目录: {static_dir}")
 
 # 注册API路由
 app.include_router(collections_router)
@@ -182,6 +189,67 @@ async def stats_page(request: Request):
     return templates.TemplateResponse("stats.html", {"request": request})
 
 
+# 全局统计端点
+@app.get("/api/stats", summary="获取全局统计信息")
+async def get_global_stats():
+    """获取全局统计信息"""
+    try:
+        from .dao.collection_dao import collection_dao
+        from .dao.video_dao import video_dao
+        
+        collections = await collection_dao.get_all_collections()
+        total_collections = len(collections)
+        
+        if total_collections == 0:
+            return {
+                "total_collections": 0,
+                "total_videos": 0,
+                "available_videos": 0,
+                "deleted_videos": 0
+            }
+        
+        # 计算总体统计
+        total_videos = 0
+        available_videos = 0
+        deleted_videos = 0
+        
+        for collection in collections:
+            stats = await collection_dao.get_collection_stats(collection["id"])
+            total_videos += stats.get("total_videos", 0)
+            available_videos += stats.get("available_videos", 0)
+            deleted_videos += stats.get("deleted_videos", 0)
+        
+        return {
+            "total_collections": total_collections,
+            "total_videos": total_videos,
+            "available_videos": available_videos,
+            "deleted_videos": deleted_videos
+        }
+    except Exception as e:
+        logger.error(f"获取全局统计信息失败: {e}")
+        raise HTTPException(status_code=500, detail="获取统计信息失败")
+
+
+# 同步API端点
+@app.post("/api/sync", summary="同步收藏夹")
+async def sync_collections_global(sync_request: SyncRequest = None):
+    """全局同步端点"""
+    from .services.optimized_sync_service import optimized_sync_service
+    
+    try:
+        if sync_request and sync_request.collection_id:
+            logger.info(f"开始同步收藏夹: {sync_request.collection_id}")
+            stats = await optimized_sync_service.sync_single_collection(sync_request.collection_id)
+        else:
+            logger.info("开始同步所有收藏夹")
+            stats = await optimized_sync_service.sync_all_favorites()
+        
+        return stats
+    except Exception as e:
+        logger.error(f"同步收藏夹失败: {e}")
+        raise HTTPException(status_code=500, detail=f"同步失败: {str(e)}")
+
+
 # 健康检查端点
 @app.get("/health", summary="健康检查")
 async def health_check():
@@ -210,6 +278,18 @@ async def app_info():
             "bilibili_auth_configured": config.validate_bilibili_credentials()
         }
     }
+
+
+# favicon 路由
+@app.get("/favicon.ico")
+async def favicon():
+    """返回网站图标"""
+    favicon_path = Path("static/favicon.ico")
+    if favicon_path.exists():
+        return FileResponse(str(favicon_path))
+    else:
+        # 返回404，避免500错误
+        raise HTTPException(status_code=404, detail="Favicon not found")
 
 
 if __name__ == "__main__":

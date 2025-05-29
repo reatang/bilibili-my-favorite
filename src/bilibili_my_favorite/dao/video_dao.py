@@ -44,7 +44,7 @@ class VideoDAO(BaseDAO):
             params.extend([search_param, search_param])
         
         # 添加排序
-        base_query += " ORDER BY cv.last_seen DESC"
+        base_query += " ORDER BY cv.fav_time DESC"
         
         # 添加分页
         if limit:

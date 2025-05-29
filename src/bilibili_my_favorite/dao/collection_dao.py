@@ -109,10 +109,11 @@ class CollectionDAO(BaseDAO):
         query = """
         SELECT 
             COUNT(*) as total_videos,
-            COUNT(CASE WHEN cv.is_deleted = 0 THEN 1 END) as available_videos,
-            COUNT(CASE WHEN cv.is_deleted = 1 THEN 1 END) as deleted_videos,
+            COUNT(CASE WHEN v.is_deleted = 0 THEN 1 END) as available_videos,
+            COUNT(CASE WHEN v.is_deleted = 1 THEN 1 END) as deleted_videos,
             MAX(cv.last_seen) as last_video_seen
         FROM collection_videos cv
+        JOIN videos v ON cv.video_id = v.id
         WHERE cv.collection_id = ?
         """
         row = await self.execute_one(query, (collection_id,))
