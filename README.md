@@ -135,7 +135,7 @@ python src/cli.py download <BVID>
 python src/cli.py --help
 ```
 
-### Web界面（还没debug，不一定能用）
+### Web界面
 
 启动Web服务器后，访问 `http://localhost:8000` 使用Web界面：
 
@@ -143,29 +143,14 @@ python src/cli.py --help
 - **收藏夹详情**: 查看收藏夹中的视频列表，支持搜索和过滤
 - **同步管理**: 执行同步操作，查看同步进度和结果
 - **统计信息**: 查看详细的数据统计和分析
-- **官方影视**: 专门的官方影视作品管理页面
 
 ### API接口
 
-系统提供完整的REST API，访问 `http://localhost:8000/docs` 查看交互式API文档。
+系统提供完整的REST API，详细信息请查看 [API文档](docs/api.md)。
 
-#### 主要端点
-
-**收藏夹相关**：
-- `GET /api/collections/` - 获取收藏夹列表
-- `GET /api/collections/{id}` - 获取收藏夹详情
-- `GET /api/collections/{id}/stats` - 获取收藏夹统计信息
-- `POST /api/collections/sync` - 同步收藏夹
-- `POST /api/collections/{id}/sync` - 同步指定收藏夹
-- `DELETE /api/collections/{id}` - 删除收藏夹
-
-**视频相关**：
-- `GET /api/videos/collections/{id}` - 获取收藏夹视频列表
-- `GET /api/videos/{id}` - 获取视频详情
-- `GET /api/videos/bvid/{bvid}` - 根据BVID获取视频
-- `GET /api/videos/official` - 获取官方影视作品列表
-- `GET /api/videos/deleted` - 获取已删除视频列表
-- `GET /api/videos/stats` - 获取视频统计信息
+快速访问：
+- **交互式API文档**: `http://localhost:8000/docs`
+- **API参考文档**: `http://localhost:8000/redoc`
 
 ## 核心功能详解
 

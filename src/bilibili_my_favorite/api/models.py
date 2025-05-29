@@ -85,7 +85,7 @@ class SyncRequest(BaseModel):
 
 class VideoSearchRequest(BaseModel):
     """视频搜索请求模型"""
-    status: Optional[str] = Field("all", regex="^(all|available|deleted)$")
+    status: Optional[str] = Field("all", pattern="^(all|available|deleted)$")
     search: Optional[str] = Field(None, min_length=1, max_length=100)
     page: int = Field(1, ge=1)
     page_size: int = Field(20, ge=1, le=100)

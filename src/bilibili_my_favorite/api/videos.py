@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/videos", tags=["videos"])
 @router.get("/collections/{collection_id}", response_model=PaginatedResponse, summary="获取收藏夹中的视频")
 async def get_videos_by_collection(
     collection_id: int,
-    status: Optional[str] = Query("all", regex="^(all|available|deleted)$", description="视频状态过滤"),
+    status: Optional[str] = Query("all", pattern="^(all|available|deleted)$", description="视频状态过滤"),
     search: Optional[str] = Query(None, min_length=1, max_length=100, description="搜索关键词"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量")

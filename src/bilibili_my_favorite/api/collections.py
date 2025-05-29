@@ -2,14 +2,15 @@
 收藏夹API路由
 处理收藏夹相关的HTTP请求
 """
-from typing import List
-from fastapi import APIRouter, HTTPException, Depends
+import math
+from typing import List, Optional
+from fastapi import APIRouter, HTTPException, Depends, Query
 from ..dao.collection_dao import collection_dao
 from ..dao.video_dao import video_dao
 from ..services.optimized_sync_service import optimized_sync_service
 from .models import (
     CollectionResponse, CollectionStatsResponse, SyncStatsResponse,
-    SyncRequest, ErrorResponse, SuccessResponse
+    SyncRequest, ErrorResponse, SuccessResponse, PaginatedResponse
 )
 from ..utils.logger import logger
 
@@ -27,7 +28,65 @@ async def get_all_collections():
         raise HTTPException(status_code=500, detail="获取收藏夹列表失败")
 
 
-@router.get("/{collection_id}", response_model=CollectionResponse, summary="获取单个收藏夹")
+@router.get("/{collection_id}/videos", response_model=PaginatedResponse, summary="获取收藏夹中的视频")
+async def get_videos_by_collection(
+    collection_id: int,
+    status: Optional[str] = Query("all", pattern="^(all|available|deleted)$", description="视频状态过滤"),
+    search: Optional[str] = Query(None, min_length=1, max_length=100, description="搜索关键词"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量")
+):
+    """
+    获取指定收藏夹中的视频列表
+    
+    - status: all(全部), available(可用), deleted(已删除)
+    - search: 在视频标题和UP主名称中搜索
+    - page: 页码，从1开始
+    - page_size: 每页视频数量，最大100
+    """
+    try:
+        # 检查收藏夹是否存在
+        collection = await collection_dao.get_collection_by_id(collection_id)
+        if not collection:
+            raise HTTPException(status_code=404, detail=f"收藏夹 {collection_id} 不存在")
+        
+        # 计算偏移量
+        offset = (page - 1) * page_size
+        
+        # 获取视频列表
+        videos = await video_dao.get_videos_by_collection(
+            collection_id=collection_id,
+            status=status,
+            search=search,
+            limit=page_size,
+            offset=offset
+        )
+        
+        # 获取总数（为了分页信息，需要单独查询）
+        total_videos = await video_dao.get_videos_by_collection(
+            collection_id=collection_id,
+            status=status,
+            search=search
+        )
+        total = len(total_videos)
+        total_pages = math.ceil(total / page_size) if total > 0 else 1
+        
+        return PaginatedResponse(
+            items=videos,
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取收藏夹 {collection_id} 视频列表失败: {e}")
+        raise HTTPException(status_code=500, detail="获取视频列表失败")
+
+
+@router.get("/{collection_id}", response_model=CollectionResponse, summary="获取收藏夹详情")
 async def get_collection(collection_id: int):
     """根据ID获取收藏夹详情"""
     try:
