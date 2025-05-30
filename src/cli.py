@@ -20,6 +20,7 @@ from bilibili_my_favorite.dao.video_dao import video_dao
 from bilibili_my_favorite.dao.base import BaseDAO
 from bilibili_my_favorite.utils.logger import logger
 from bilibili_my_favorite.utils.downloader import video_downloader
+from bilibili_my_favorite.utils.encoding import setup_encoding
 from bilibili_my_favorite.services.sync_context import SyncContext
 
 from dotenv import load_dotenv
@@ -27,6 +28,8 @@ from dotenv import load_dotenv
 # 加载环境变量
 load_dotenv()
 
+# 设置编码环境
+setup_encoding()
 
 console = Console()
 
@@ -38,6 +41,7 @@ def async_command(f):
             try:
                 # 初始化数据库连接
                 await BaseDAO.initialize_database()
+                
                 # 运行原始函数
                 return await f(*args, **kwargs)
             except Exception as e:
@@ -92,7 +96,7 @@ def sync(collection_id: Optional[str], force: bool):
             console.print("- USER_BUVID3")
             return
         
-        # 使用优化同步方式（默认）
+        # 同步模式：直接执行（原来的逻辑）
         try:
             # 检查是否有中断的任务
             lock_file = SyncContext.find_existing_lock_file()
@@ -398,141 +402,18 @@ def init_db():
                 await migrate_database()
                 console.print("[bold green]数据库迁移完成![/bold green]")
             
+            # 初始化任务表
+            console.print("[bold blue]初始化任务系统表...[/bold blue]")
+            from bilibili_my_favorite.dao.task_dao import task_dao
+            await task_dao.create_task_table()
+            console.print("[bold green]任务系统表初始化完成![/bold green]")
+            
             console.print("[bold green]数据库初始化完成![/bold green]")
             console.print(f"数据库文件: {config.DATABASE_PATH}")
         except Exception as e:
             console.print(f"[bold red]数据库初始化失败: {e}[/bold red]")
     
     run_init()
-
-
-@cli.command()
-@click.option('--collection-id', '-c', type=int, help='指定收藏夹ID')
-@click.option('--limit', '-l', type=int, default=20, help='显示数量限制')
-def list_official(collection_id: Optional[int], limit: int):
-    """列出官方影视作品"""
-    @async_command
-    async def run_list():
-        try:
-            # 获取官方影视作品
-            videos = await video_dao.get_official_videos(
-                collection_id=collection_id,
-                limit=limit
-            )
-            
-            if not videos:
-                if collection_id:
-                    console.print(f"[yellow]收藏夹 {collection_id} 中没有找到官方影视作品[/yellow]")
-                else:
-                    console.print("[yellow]没有找到官方影视作品[/yellow]")
-                return
-            
-            # 显示收藏夹信息
-            if collection_id:
-                collection = await collection_dao.get_collection_by_id(collection_id)
-                if collection:
-                    console.print(f"[bold blue]收藏夹: {collection['title']}[/bold blue]")
-            
-            table = Table(title="官方影视作品列表")
-            table.add_column("BVID", style="blue")
-            table.add_column("标题", style="green", max_width=40)
-            table.add_column("UP主", style="magenta")
-            table.add_column("状态", style="yellow")
-            table.add_column("类型", style="cyan")
-            
-            for video in videos:
-                status_text = "已删除" if video["is_deleted"] else "正常"
-                
-                # 解析ogv_info来判断类型
-                ogv_type = "官方影视"
-                try:
-                    if video["ogv_info"]:
-                        ogv_data = json.loads(video["ogv_info"])
-                        if "movie" in str(ogv_data).lower():
-                            ogv_type = "电影"
-                        elif "tv" in str(ogv_data).lower() or "episode" in str(ogv_data).lower():
-                            ogv_type = "电视剧"
-                        elif "documentary" in str(ogv_data).lower():
-                            ogv_type = "纪录片"
-                except:
-                    pass
-                
-                table.add_row(
-                    video["bvid"],
-                    video["title"][:37] + "..." if len(video["title"]) > 40 else video["title"],
-                    video["uploader_name"],
-                    status_text,
-                    ogv_type
-                )
-            
-            console.print(table)
-            
-            if len(videos) == limit:
-                console.print(f"[dim]显示了前 {limit} 个官方影视作品，使用 --limit 参数查看更多[/dim]")
-            
-        except Exception as e:
-            console.print(f"[bold red]获取官方影视作品列表失败: {e}[/bold red]")
-    
-    run_list()
-
-
-@cli.command()
-@click.option('--limit', '-l', type=int, default=20, help='显示数量限制')
-def list_deleted(limit: int):
-    """列出最近被删除的视频"""
-    @async_command
-    async def run_list():
-        try:
-            # 查询删除日志
-            from bilibili_my_favorite.dao.base import BaseDAO
-            
-            query = """
-            SELECT dl.video_bvid, dl.video_title, dl.uploader_name, 
-                   dl.deleted_at, dl.reason, c.title as collection_title
-            FROM deletion_logs dl
-            JOIN collections c ON dl.collection_id = c.id
-            ORDER BY dl.deleted_at DESC
-            LIMIT ?
-            """
-            
-            # 使用BaseDAO执行查询
-            dao = BaseDAO()
-            rows = await dao.execute_query(query, (limit,))
-            deleted_videos = dao.rows_to_dicts(rows)
-            
-            if not deleted_videos:
-                console.print("[yellow]没有找到被删除的视频记录[/yellow]")
-                return
-            
-            table = Table(title="最近被删除的视频")
-            table.add_column("BVID", style="blue")
-            table.add_column("标题", style="green", max_width=35)
-            table.add_column("UP主", style="magenta")
-            table.add_column("收藏夹", style="cyan", max_width=25)
-            table.add_column("删除时间", style="yellow")
-            table.add_column("原因", style="dim")
-            
-            for video in deleted_videos:
-                deleted_time = video["deleted_at"][:19] if video["deleted_at"] else "未知"
-                
-                table.add_row(
-                    video["video_bvid"],
-                    video["video_title"][:32] + "..." if len(video["video_title"]) > 35 else video["video_title"],
-                    video["uploader_name"] or "Unknown",
-                    video["collection_title"][:22] + "..." if len(video["collection_title"]) > 25 else video["collection_title"],
-                    deleted_time,
-                    video["reason"] or "未知"
-                )
-            
-            console.print(table)
-            
-            if len(deleted_videos) == limit:
-                console.print(f"[dim]显示了最近 {limit} 个被删除的视频，使用 --limit 参数查看更多[/dim]")
-            
-        except Exception as e:
-            console.print(f"[bold red]获取删除记录失败: {e}[/bold red]")
-    
-    run_list()
 
 
 @cli.command()
@@ -569,12 +450,6 @@ def download(bvid: str, page: int, quality: int, output: Optional[str], ffmpeg_p
     """下载B站视频"""
     @async_command
     async def run_download():
-        import os
-        import traceback
-        from bilibili_api import video
-        from bilibili_my_favorite.core.bilibili_plus import get_download_url
-        from bilibili_my_favorite.utils.downloader import video_downloader
-        
         # 检查B站凭据
         if not bilibili_service.is_authenticated():
             console.print("[bold red]错误: B站API凭据不完整[/bold red]")
@@ -585,182 +460,51 @@ def download(bvid: str, page: int, quality: int, output: Optional[str], ffmpeg_p
             console.print("- USER_BUVID3")
             return
         
-        # 检查FFmpeg
+        # 同步模式：直接执行下载
         try:
-            import subprocess
-            result = subprocess.run([ffmpeg_path, '-version'], 
-                                  capture_output=True, text=True, timeout=5)
-            if result.returncode != 0:
-                console.print(f"[bold red]错误: FFmpeg不可用，请检查路径: {ffmpeg_path}[/bold red]")
-                return
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            console.print(f"[bold red]错误: 找不到FFmpeg，请检查路径: {ffmpeg_path}[/bold red]")
-            console.print("请安装FFmpeg或指定正确的路径")
-            return
-        
-        try:
-            console.print(f"[bold blue]开始下载视频: {bvid}[/bold blue]")
+            from bilibili_my_favorite.services.video_download_service import VideoDownloadService
             
-            credential = bilibili_service.credential
+            console.print(f"[bold blue]开始下载视频: {bvid} P{page+1}[/bold blue]")
             
-            # 实例化Video类
-            v = video.Video(bvid=bvid, credential=credential)
+            download_service = VideoDownloadService()
             
-            # 获取视频信息
+            # 显示进度
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
                 console=console
             ) as progress:
-                info_task = progress.add_task("获取视频信息...", total=None)
+                task_progress = progress.add_task("下载中...", total=None)
                 
-                try:
-                    info = await v.get_info()
-                    progress.update(info_task, completed=True)
-                except Exception as e:
-                    progress.update(info_task, completed=True)
-                    console.print(f"[bold red]获取视频信息失败: {e}[/bold red]")
-                    return
-            
-            # 显示视频信息
-            console.print(f"[green]视频标题:[/green] {info['title']}")
-            console.print(f"[green]UP主:[/green] {info['owner']['name']}")
-            console.print(f"[green]视频时长:[/green] {info['duration']}秒")
-            console.print(f"[green]分P数量:[/green] {len(info['pages'])}")
-            
-            # 检查分P索引
-            if page >= len(info['pages']):
-                console.print(f"[bold red]错误: 分P索引 {page} 超出范围（0-{len(info['pages'])-1}）[/bold red]")
-                return
-            
-            page_info = info['pages'][page]
-            console.print(f"[green]当前分P:[/green] P{page+1} - {page_info['part']}")
-            
-            # 获取CID
-            cid = page_info['cid']
-            
-            # 获取下载链接
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console
-            ) as progress:
-                url_task = progress.add_task("获取下载链接...", total=None)
+                # 执行下载
+                result = await download_service.download_video_simple(
+                    bvid=bvid,
+                    page=page,
+                    quality=quality,
+                    output_filename=output
+                )
                 
-                try:
-                    download_url_data = await get_download_url(
-                        bvid=bvid, cid=cid, credential=credential, qn=quality
-                    )
-                    progress.update(url_task, completed=True)
-                except Exception as e:
-                    progress.update(url_task, completed=True)
-                    console.print(f"[bold red]获取下载链接失败: {e}[/bold red]")
-                    return
+                progress.update(task_progress, completed=True)
             
-            # 解析下载信息
-            detecter = video.VideoDownloadURLDataDetecter(data=download_url_data)
-            streams = detecter.detect_best_streams()
-            
-            if not streams:
-                console.print("[bold red]错误: 未找到可用的视频流[/bold red]")
-                return
-            
-            # 生成输出文件名
-            if output:
-                output_filename = output
+            # 显示结果
+            if result.success:
+                console.print(f"[bold green]下载完成![/bold green]")
+                if result.data and "video_info" in result.data:
+                    video_info = result.data["video_info"]
+                    console.print(f"[green]视频标题:[/green] {video_info['title']}")
+                    console.print(f"[green]UP主:[/green] {video_info['uploader']}")
+                
+                if result.output_files:
+                    console.print(f"[green]保存路径:[/green] {result.output_files[0]}")
+                
+                if result.statistics:
+                    file_size = result.statistics.get('file_size', 0)
+                    if file_size > 0:
+                        file_size_mb = file_size / (1024 * 1024)
+                        console.print(f"[green]文件大小:[/green] {file_size_mb:.1f} MB")
             else:
-                # 清理文件名中的非法字符
-                safe_title = "".join(c for c in info['title'] if c.isalnum() or c in (' ', '-', '_')).strip()
-                output_filename = f"{bvid}_{safe_title}_P{page+1}"
-            
-            output_path = config.VIDEOS_DIR / f"{output_filename}.mp4"
-            
-            console.print(f"[green]输出路径:[/green] {output_path}")
-            console.print(f"[green]视频质量:[/green] {download_url_data.get('quality', quality)}")
-            
-            # 下载视频
-            if detecter.check_flv_mp4_stream():
-                # FLV流下载
-                temp_file_path = config.VIDEOS_DIR / f"{bvid}.temp.flv"
+                console.print(f"[bold red]下载失败: {result.error_message}[/bold red]")
                 
-                console.print("[blue]检测到FLV流，开始下载...[/blue]")
-                
-                try:
-                    await video_downloader.download_video(
-                        streams[0].url, str(temp_file_path), "下载FLV音视频流"
-                    )
-                    
-                    # 转换格式
-                    console.print("[blue]转换视频格式...[/blue]")
-                    convert_cmd = f'"{ffmpeg_path}" -i "{temp_file_path}" -c copy "{output_path}"'
-                    result = os.system(convert_cmd)
-                    
-                    if result == 0:
-                        console.print("[bold green]视频下载完成![/bold green]")
-                    else:
-                        console.print("[bold red]视频格式转换失败[/bold red]")
-                    
-                    # 删除临时文件
-                    if temp_file_path.exists():
-                        temp_file_path.unlink()
-                        
-                except Exception as e:
-                    console.print(f"[bold red]下载失败: {e}[/bold red]")
-                    if temp_file_path.exists():
-                        temp_file_path.unlink()
-                    return
-            else:
-                # MP4流下载（分离的视频和音频流）
-                video_temp_path = config.VIDEOS_DIR / f"{bvid}.video_temp.m4s"
-                audio_temp_path = config.VIDEOS_DIR / f"{bvid}.audio_temp.m4s"
-                
-                console.print("[blue]检测到分离的视频/音频流，开始下载...[/blue]")
-                
-                try:
-                    if not video_temp_path.exists():
-                        # 下载视频流
-                        await video_downloader.download_video(
-                            streams[0].url, str(video_temp_path), "下载视频流"
-                        )
-                    
-                    # 下载音频流
-                    if len(streams) > 1:
-                        if not audio_temp_path.exists():
-                            await video_downloader.download_video(
-                                streams[1].url, str(audio_temp_path), "下载音频流"
-                            )
-                    
-                    # 合并音视频
-                    console.print("[blue]合并音视频流...[/blue]")
-                    if len(streams) > 1:
-                        merge_cmd = f"{ffmpeg_path} -i {video_temp_path} -i {audio_temp_path} -vcodec copy -acodec copy {output_path}"
-                    else:
-                        merge_cmd = f'"{ffmpeg_path}" -i "{video_temp_path}" -c copy "{output_path}"'
-                    
-                    result = os.system(merge_cmd)
-                    
-                    if result == 0:
-                        console.print("[bold green]视频下载完成![/bold green]")
-                                            
-                        # 删除临时文件
-                        if video_temp_path.exists():
-                            video_temp_path.unlink()
-                        if audio_temp_path.exists():
-                            audio_temp_path.unlink()
-                    else:
-                        console.print("[bold red]音视频合并失败[/bold red]")
-                        
-                except Exception as e:
-                    console.print(f"[bold red]下载失败: {e}[/bold red]")
-                    # 清理临时文件
-                    if video_temp_path.exists():
-                        video_temp_path.unlink()
-                    if audio_temp_path.exists():
-                        audio_temp_path.unlink()
-                    return
-            
-            console.print(f"[bold green]视频已保存到: {output_path}[/bold green]")
-            
         except Exception as e:
             error_traceback = traceback.format_exc()
             console.print(f"[bold red]下载过程中发生错误: {e}[/bold red]")
