@@ -139,7 +139,7 @@ class VideoDAO(BaseDAO):
         updatable_fields = [
             "title", "cover_url", "local_cover_path", "page_count", 
             "duration", "attr", "ctime", "pubtime", "first_cid", "season_info", 
-            "ogv_info", "link", "media_list_link", "is_deleted", "deleted_at"
+            "ogv_info", "link", "media_list_link"
         ]
         
         for field in updatable_fields:

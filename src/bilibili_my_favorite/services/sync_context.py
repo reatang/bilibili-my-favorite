@@ -45,9 +45,11 @@ class SyncContext:
             "videos_added": 0,
             "videos_updated": 0,
             "videos_deleted": 0,
+            "videos_restored": 0,
             "covers_downloaded": 0,
             "errors": [],
-            "deleted_videos": []  # 记录被删除的视频详情
+            "deleted_videos": [],  # 记录被删除的视频详情
+            "restored_videos": []  # 记录恢复的视频详情
         }
         
         # 时间戳

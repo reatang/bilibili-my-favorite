@@ -148,6 +148,7 @@ def sync(collection_id: Optional[str], force: bool):
         table.add_row("新增视频", str(stats["videos_added"]))
         table.add_row("更新视频", str(stats["videos_updated"]))
         table.add_row("删除视频", str(stats["videos_deleted"]))
+        table.add_row("恢复视频", str(stats["videos_restored"]))
         table.add_row("下载封面", str(stats["covers_downloaded"]))
         
         console.print(table)
@@ -155,10 +156,16 @@ def sync(collection_id: Optional[str], force: bool):
         # 显示被删除的视频详情
         if stats.get("deleted_videos"):
             console.print(f"\n[bold yellow]发现 {len(stats['deleted_videos'])} 个被删除的视频[/bold yellow]")
-            for deleted_video in stats["deleted_videos"][:5]:  # 只显示前5个
+            for deleted_video in stats["deleted_videos"]:
                 console.print(f"  • {deleted_video['title']} (BVID: {deleted_video['bvid']}) - 来自收藏夹: {deleted_video['collection_title']}")
             if len(stats["deleted_videos"]) > 5:
                 console.print(f"  ... 还有 {len(stats['deleted_videos']) - 5} 个被删除的视频")
+        
+        # 显示被恢复的视频详情
+        if stats.get("restored_videos"):
+            console.print(f"\n[bold green]发现 {len(stats['restored_videos'])} 个被恢复的视频[/bold green]")
+            for restored_video in stats["restored_videos"]:
+                console.print(f"  • {restored_video['title']} (BVID: {restored_video['bvid']}) - 来自收藏夹: {restored_video['collection_title']}")
         
         if stats["errors"]:
             console.print(f"\n[bold yellow]警告: 发生了 {len(stats['errors'])} 个错误[/bold yellow]")

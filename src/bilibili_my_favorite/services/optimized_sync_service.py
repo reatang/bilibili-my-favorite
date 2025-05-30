@@ -401,18 +401,6 @@ class OptimizedSyncService:
                 logger.error(f"{error_msg}\n错误栈:\n{error_traceback}")
                 self.context.stats["errors"].append(error_msg)
         
-        # 标记已删除的视频
-        deleted_bvids = existing_bvids - api_bvids
-        for bvid in deleted_bvids:
-            try:
-                await self._mark_video_deleted(bvid, db_collection_id)
-                self.context.stats["videos_deleted"] += 1
-            except Exception as e:
-                error_msg = f"标记视频 {bvid} 为已删除失败: {e}"
-                error_traceback = traceback.format_exc()
-                logger.error(f"{error_msg}\n错误栈:\n{error_traceback}")
-                self.context.stats["errors"].append(error_msg)
-        
         # 更新收藏夹同步时间
         await collection_dao.update_sync_time(db_collection_id)
         self.context.mark_collection_completed(collection_data)
@@ -475,6 +463,9 @@ class OptimizedSyncService:
                 if "已失效视频" not in existing_video["title"]:
                     processed_video_data["title"] = f"{existing_video['title']} (已失效视频)"
                 logger.info(f"视频 '{existing_video['title']}' (BVID: {bvid}) 变为不可用")
+                
+                await self._mark_video_deleted(bvid, collection_id)
+                self.context.stats["videos_deleted"] += 1
             elif current_deleted and not is_deleted:
                 # 视频可能恢复可用 - 使用严格验证
                 should_restore = await self._should_restore_video(video_data, existing_video)
@@ -488,6 +479,8 @@ class OptimizedSyncService:
                     else:
                         processed_video_data["title"] = title
                     logger.info(f"视频 '{title}' (BVID: {bvid}) 恢复可用")
+                    await self._mark_video_restored(bvid, collection_id)
+                    self.context.stats["videos_restored"] += 1
                 else:
                     # 不满足恢复条件，保持删除状态
                     processed_video_data["is_deleted"] = True
@@ -503,13 +496,11 @@ class OptimizedSyncService:
         else:
             # 创建新视频记录
             processed_video_data["intro"] = video_data.get("intro", "")
-            processed_video_data["is_deleted"] = is_deleted
-            if is_deleted:
-                processed_video_data["deleted_at"] = datetime.now(timezone.utc)
             
             try:
                 video_id = await video_dao.create_video(processed_video_data)
                 if is_deleted:
+                    await self._mark_video_deleted(bvid, collection_id)
                     logger.info(f"新视频 '{title}' (BVID: {bvid}) 为不可用状态")
                 self.context.stats["videos_added"] += 1
             except Exception as e:
@@ -624,9 +615,6 @@ class OptimizedSyncService:
         # 标记视频为已删除
         await video_dao.mark_as_deleted(video["id"])
         
-        # 从收藏夹中移除视频
-        await video_dao.remove_from_collection(collection_id, video["id"])
-        
         # 记录删除日志
         await log_deletion(
             collection_id=collection_id,
@@ -635,8 +623,32 @@ class OptimizedSyncService:
             uploader_name=video.get("uploader_name", "Unknown"),
             reason="从B站收藏夹中移除"
         )
+
+
+    async def _mark_video_restored(self, bvid: str, collection_id: int):
+        """标记视频为已恢复"""
+        video = await video_dao.get_video_by_bvid(bvid)
+        if not video:
+            logger.warning(f"未找到要恢复的视频: {bvid}")
+            return
         
-        logger.info(f"视频 '{video['title']}' (BVID: {bvid}) 已从收藏夹 '{collection_title}' 中删除")
+        # 获取收藏夹信息用于记录
+        collection = await collection_dao.get_collection_by_id(collection_id)
+        collection_title = collection["title"] if collection else f"收藏夹ID:{collection_id}"
+        
+        # 记录恢复的视频信息
+        restored_video_info = {
+            "bvid": bvid,
+            "title": video["title"],
+            "uploader_name": video.get("uploader_name", "Unknown"),
+            "collection_title": collection_title,
+            "restored_at": datetime.now(timezone.utc).isoformat()
+        }
+        self.context.stats["restored_videos"].append(restored_video_info)
+        
+        # 标记视频为已恢复
+        await video_dao.mark_as_available(video["id"])
+    
 
     async def _download_all_covers(self):
         """下载所有收藏夹视频的封面"""
