@@ -214,6 +214,12 @@ async def stats_page(request: Request):
     return templates.TemplateResponse("stats.html", {"request": request})
 
 
+@app.get("/tasks", response_class=HTMLResponse, summary="任务管理页面")
+async def tasks_page(request: Request):
+    """显示任务管理页面"""
+    return templates.TemplateResponse("tasks.html", {"request": request})
+
+
 # 全局统计端点
 @app.get("/api/stats", summary="获取全局统计信息")
 async def get_global_stats() -> GlobalStatsDict:

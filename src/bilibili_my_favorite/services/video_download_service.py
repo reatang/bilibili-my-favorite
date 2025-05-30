@@ -51,16 +51,22 @@ class VideoDownloadService:
             if not self.bilibili_service.is_authenticated():
                 return TaskResult(
                     success=False,
+                    data=None,
                     error_message="B站API凭据不完整",
-                    error_code="AUTH_ERROR"
+                    error_code="AUTH_ERROR",
+                    output_files=[],
+                    statistics={}
                 )
             
             # 检查FFmpeg
             if not self._check_ffmpeg(ffmpeg_path):
                 return TaskResult(
                     success=False,
+                    data=None,
                     error_message=f"FFmpeg不可用: {ffmpeg_path}",
-                    error_code="FFMPEG_ERROR"
+                    error_code="FFMPEG_ERROR",
+                    output_files=[],
+                    statistics={}
                 )
             
             # 获取视频信息
@@ -68,16 +74,22 @@ class VideoDownloadService:
             if not video_info:
                 return TaskResult(
                     success=False,
+                    data=None,
                     error_message="获取视频信息失败",
-                    error_code="VIDEO_INFO_ERROR"
+                    error_code="VIDEO_INFO_ERROR",
+                    output_files=[],
+                    statistics={}
                 )
             
             # 检查分P索引
             if page >= len(video_info['pages']):
                 return TaskResult(
                     success=False,
+                    data=None,
                     error_message=f"分P索引 {page} 超出范围（0-{len(video_info['pages'])-1}）",
-                    error_code="PAGE_INDEX_ERROR"
+                    error_code="PAGE_INDEX_ERROR",
+                    output_files=[],
+                    statistics={}
                 )
             
             page_info = video_info['pages'][page]
@@ -88,8 +100,11 @@ class VideoDownloadService:
             if not download_streams:
                 return TaskResult(
                     success=False,
+                    data=None,
                     error_message="获取下载链接失败",
-                    error_code="DOWNLOAD_URL_ERROR"
+                    error_code="DOWNLOAD_URL_ERROR",
+                    output_files=[],
+                    statistics={}
                 )
             
             # 生成输出文件名和路径
@@ -113,6 +128,8 @@ class VideoDownloadService:
                             "page_title": page_info["part"]
                         }
                     },
+                    error_message=None,
+                    error_code=None,
                     output_files=[str(output_path)],
                     statistics={
                         "file_size": output_path.stat().st_size if output_path.exists() else 0,
@@ -122,8 +139,11 @@ class VideoDownloadService:
             else:
                 return TaskResult(
                     success=False,
+                    data=None,
                     error_message="视频下载失败",
-                    error_code="DOWNLOAD_ERROR"
+                    error_code="DOWNLOAD_ERROR",
+                    output_files=[],
+                    statistics={}
                 )
                 
         except Exception as e:
@@ -131,8 +151,11 @@ class VideoDownloadService:
             logger.error(f"视频下载失败: {e}\n{error_traceback}")
             return TaskResult(
                 success=False,
+                data=None,
                 error_message=str(e),
-                error_code="UNKNOWN_ERROR"
+                error_code="UNKNOWN_ERROR",
+                output_files=[],
+                statistics={}
             )
     
     def _check_ffmpeg(self, ffmpeg_path: str) -> bool:

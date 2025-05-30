@@ -149,9 +149,12 @@ class TaskManager:
             started_at=task.started_at.isoformat() if task.started_at else None,
             completed_at=task.completed_at.isoformat() if task.completed_at else None,
             result={
-                "success": task.result.success if task.result else None,
+                "success": task.result.success if task.result else False,
+                "data": task.result.data if task.result else None,
                 "error_message": task.result.error_message if task.result else None,
-                "output_files": task.result.output_files if task.result else []
+                "error_code": task.result.error_code if task.result else None,
+                "output_files": task.result.output_files if task.result else [],
+                "statistics": task.result.statistics if task.result else {}
             } if task.result else None
         )
     

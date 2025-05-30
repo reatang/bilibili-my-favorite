@@ -160,8 +160,11 @@ class TaskExecutor:
             task.completed_at = datetime.now()
             task.result = TaskResult(
                 success=False,
+                data=None,
                 error_message=str(e),
-                error_code="EXECUTION_ERROR"
+                error_code="EXECUTION_ERROR",
+                output_files=[],
+                statistics={}
             )
             
             # 检查是否需要重试
@@ -206,6 +209,9 @@ class TaskExecutor:
             return TaskResult(
                 success=True,
                 data=stats,
+                error_message=None,
+                error_code=None,
+                output_files=[],
                 statistics=stats
             )
             
@@ -213,8 +219,11 @@ class TaskExecutor:
             logger.error(f"同步任务执行失败: {e}")
             return TaskResult(
                 success=False,
+                data=None,
                 error_message=str(e),
-                error_code="SYNC_ERROR"
+                error_code="SYNC_ERROR",
+                output_files=[],
+                statistics={}
             )
     
     async def _handle_batch_download_task(self, task: BaseTask) -> TaskResult:
@@ -270,6 +279,9 @@ class TaskExecutor:
             return TaskResult(
                 success=True,
                 data={"downloads": results},
+                error_message=None,
+                error_code=None,
+                output_files=[],
                 statistics={
                     "total_videos": len(video_list),
                     "successful_downloads": successful_downloads,
@@ -281,8 +293,11 @@ class TaskExecutor:
             logger.error(f"批量下载任务执行失败: {e}")
             return TaskResult(
                 success=False,
+                data=None,
                 error_message=str(e),
-                error_code="BATCH_DOWNLOAD_ERROR"
+                error_code="BATCH_DOWNLOAD_ERROR",
+                output_files=[],
+                statistics={}
             )
     
     def get_current_task(self) -> Optional[BaseTask]:
