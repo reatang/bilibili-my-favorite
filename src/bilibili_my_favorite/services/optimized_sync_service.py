@@ -6,7 +6,7 @@ import asyncio
 import json
 import random
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
@@ -32,7 +32,7 @@ class OptimizedSyncService:
     
     async def sync_all_favorites(self, uid: str = None, resume_task_id: str = None) -> Dict[str, Any]:
         """
-        同步所有收藏夹（优化版本）
+        同步所有收藏夹（优化版本 - 三步走）
         
         Args:
             uid: 用户ID，默认使用配置中的用户ID
@@ -54,9 +54,15 @@ class OptimizedSyncService:
                 # 数据获取完成后，转换到处理阶段
                 self.context.update_status("processing")
             
-            # 步骤3: 处理数据入库和封面下载
+            # 步骤3: 处理数据入库（如果还没有完成）
             if self.context.status == "processing":
                 await self._process_all_data()
+                # 数据处理完成后，转换到下载阶段
+                self.context.update_status("downloading")
+            
+            # 步骤4: 下载封面（如果还没有完成）
+            if self.context.status == "downloading":
+                await self._download_all_covers()
             
             # 完成同步
             self.context.update_status("completed")
@@ -117,10 +123,16 @@ class OptimizedSyncService:
             
             # 获取收藏夹数据
             await self._fetch_single_collection_data(collection_data)
+            self.context.mark_collection_data_fetched(str(collection_data["id"]))
             
             # 处理数据
             self.context.update_status("processing")
             await self._process_single_collection_data(collection_data)
+            
+            # 下载封面
+            self.context.update_status("downloading")
+            await self._download_collection_covers(collection_data)
+            self.context.mark_collection_downloaded(collection_data)
             
             # 完成同步
             self.context.update_status("completed")
@@ -332,36 +344,10 @@ class OptimizedSyncService:
         """处理所有收藏夹的数据"""
         logger.info("开始处理所有收藏夹数据")
         
-        # 获取所有有数据的收藏夹ID
-        data_dir = self.context.data_dir
-        if not data_dir.exists():
-            logger.warning("数据目录不存在，没有数据需要处理")
-            return
+        # 处理已获取数据的收藏夹
+        fetched_collections_copy = self.context.fetched_collections.copy()
         
-        collection_dirs = [d for d in data_dir.iterdir() if d.is_dir()]
-        
-        # 处理每个有数据的收藏夹
-        for collection_dir in collection_dirs:
-            collection_id = collection_dir.name
-            
-            # 找到对应的收藏夹信息
-            collection_data = None
-            
-            # 先从待处理列表中查找
-            for collection in self.context.collections_to_process:
-                if str(collection.get('id')) == collection_id:
-                    collection_data = collection
-                    break
-            
-            # 如果是当前正在处理的收藏夹
-            if not collection_data and self.context.current_collection:
-                if str(self.context.current_collection.get('id')) == collection_id:
-                    collection_data = self.context.current_collection
-            
-            if not collection_data:
-                logger.warning(f"未找到收藏夹 {collection_id} 的元数据，跳过处理")
-                continue
-            
+        for collection_data in fetched_collections_copy:
             try:
                 await self._process_single_collection_data(collection_data)
                 
@@ -369,7 +355,7 @@ class OptimizedSyncService:
                 error_msg = f"处理收藏夹 {collection_data.get('title', 'Unknown')} 失败: {e}"
                 error_traceback = traceback.format_exc()
                 logger.error(f"{error_msg}\n错误栈:\n{error_traceback}")
-                self.context.stats["errors"].append(error_msg)
+                self.context.mark_collection_failed(collection_data, str(e))
         
         logger.info("所有收藏夹数据处理完成")
     
@@ -396,7 +382,7 @@ class OptimizedSyncService:
         if not all_videos:
             logger.info(f"收藏夹 {title} 中没有视频")
             await collection_dao.update_sync_time(db_collection_id)
-            self.context.mark_collection_completed(collection_id)
+            self.context.mark_collection_completed(collection_data)
             return
         
         # 获取数据库中现有的视频
@@ -429,7 +415,7 @@ class OptimizedSyncService:
         
         # 更新收藏夹同步时间
         await collection_dao.update_sync_time(db_collection_id)
-        self.context.mark_collection_completed(collection_id)
+        self.context.mark_collection_completed(collection_data)
         
         logger.info(f"收藏夹 {title} 处理完成")
     
@@ -438,8 +424,8 @@ class OptimizedSyncService:
         bvid = video_data["bv_id"]
         title = video_data["title"]
         
-        # 检查视频是否已失效
-        is_deleted = title == "已失效视频" or video_data.get("attr", 0) in [1, 9]
+        # 检查视频是否已失效 - 增强判断逻辑
+        is_deleted = self._is_video_deleted(video_data)
         
         # 创建或获取UP主
         uploader_data = video_data.get("upper", {})
@@ -490,14 +476,22 @@ class OptimizedSyncService:
                     processed_video_data["title"] = f"{existing_video['title']} (已失效视频)"
                 logger.info(f"视频 '{existing_video['title']}' (BVID: {bvid}) 变为不可用")
             elif current_deleted and not is_deleted:
-                # 视频恢复可用
-                processed_video_data["is_deleted"] = False
-                processed_video_data["deleted_at"] = None
-                # 恢复视频标题（移除失效标记）
-                if "已失效视频" in existing_video["title"]:
-                    original_title = existing_video["title"].replace(" (已失效视频)", "")
-                    processed_video_data["title"] = title if title != "已失效视频" else original_title
-                logger.info(f"视频 '{title}' (BVID: {bvid}) 恢复可用")
+                # 视频可能恢复可用 - 使用严格验证
+                should_restore = await self._should_restore_video(video_data, existing_video)
+                if should_restore:
+                    processed_video_data["is_deleted"] = False
+                    processed_video_data["deleted_at"] = None
+                    # 恢复视频标题（移除失效标记）
+                    if "已失效视频" in existing_video["title"]:
+                        original_title = existing_video["title"].replace(" (已失效视频)", "")
+                        processed_video_data["title"] = title if title != "已失效视频" else original_title
+                    else:
+                        processed_video_data["title"] = title
+                    logger.info(f"视频 '{title}' (BVID: {bvid}) 恢复可用")
+                else:
+                    # 不满足恢复条件，保持删除状态
+                    processed_video_data["is_deleted"] = True
+                    processed_video_data["deleted_at"] = existing_video.get("deleted_at")
             else:
                 # 状态没有变化，但可能需要更新其他信息
                 processed_video_data["is_deleted"] = is_deleted
@@ -543,9 +537,48 @@ class OptimizedSyncService:
         if video_data.get("cnt_info"):
             await video_dao.add_video_stats(video_id, video_data["cnt_info"])
         
-        # 下载封面（仅对有效视频）
-        if not is_deleted and video_data.get("cover"):
-            await self._download_cover_if_needed(bvid, video_data["cover"], video_id)
+        # 注意：封面下载将在独立的下载阶段进行
+    
+    def _is_video_deleted(self, video_data: Dict[str, Any]) -> bool:
+        """
+        检查视频是否已失效
+        基于实际API数据优化判断逻辑
+        """
+        title = video_data.get("title", "")
+        
+        # 1. 标题检查 - 失效视频的标题特征
+        deleted_titles = [
+            "已失效视频",
+            "视频已失效", 
+            "内容已失效",
+            "该视频已失效",
+            "视频不存在",
+            "视频已被删除"
+        ]
+        
+        title_indicates_deleted = any(deleted_title in title for deleted_title in deleted_titles)
+        
+        # 失效视频主要通过title判断
+        return title_indicates_deleted
+
+    async def _should_restore_video(self, video_data: Dict[str, Any], existing_video: Dict[str, Any]) -> bool:
+        """
+        判断是否应该恢复视频
+        基于实际数据优化验证逻辑
+        """
+        bvid = video_data["bv_id"]
+        title = video_data["title"]
+        
+        # 1. 当前数据必须明确表示视频可用
+        if self._is_video_deleted(video_data):
+            return False
+            
+        # 2. 标题必须是有意义的，不能是失效标识
+        if not title or title in ["已失效视频", "视频已失效", "内容已失效"]:
+            return False
+            
+        logger.info(f"视频 {bvid} 通过恢复验证，可以恢复")
+        return True
     
     async def _download_cover_if_needed(self, bvid: str, cover_url: str, video_id: int):
         """根据需要下载封面"""
@@ -604,6 +637,66 @@ class OptimizedSyncService:
         )
         
         logger.info(f"视频 '{video['title']}' (BVID: {bvid}) 已从收藏夹 '{collection_title}' 中删除")
+
+    async def _download_all_covers(self):
+        """下载所有收藏夹视频的封面"""
+        logger.info("开始下载所有收藏夹视频的封面")
+        
+        # 处理已处理完成的收藏夹
+        processed_collections_copy = self.context.processed_collections.copy()
+        
+        for collection_data in processed_collections_copy:
+            try:
+                await self._download_collection_covers(collection_data)
+                # 下载完成后，将收藏夹移到已下载列表
+                self.context.mark_collection_downloaded(collection_data)
+                
+            except Exception as e:
+                error_msg = f"下载收藏夹 {collection_data.get('title', 'Unknown')} 封面失败: {e}"
+                error_traceback = traceback.format_exc()
+                logger.error(f"{error_msg}\n错误栈:\n{error_traceback}")
+                self.context.mark_collection_failed(collection_data, str(e))
+        
+        logger.info("所有收藏夹视频的封面下载完成")
+    
+    async def _download_collection_covers(self, collection_data: Dict[str, Any]):
+        """下载单个收藏夹的所有视频封面"""
+        collection_id = str(collection_data["id"])
+        title = collection_data["title"]
+        
+        logger.info(f"下载收藏夹封面: {title} (ID: {collection_id})")
+        
+        # 获取收藏夹的所有视频数据
+        all_videos = self.context.get_collection_all_videos(collection_id)
+        
+        if not all_videos:
+            logger.info(f"收藏夹 {title} 中没有视频需要下载封面")
+            return
+        
+        # 处理每个视频的封面下载
+        for video_data in all_videos:
+            try:
+                bvid = video_data["bv_id"]
+                title = video_data["title"]
+                cover_url = video_data.get("cover", "")
+                
+                # 检查视频是否已失效
+                is_deleted = self._is_video_deleted(video_data)
+                
+                # 只为有效视频下载封面
+                if not is_deleted and cover_url:
+                    # 获取视频ID
+                    video = await video_dao.get_video_by_bvid(bvid)
+                    if video:
+                        await self._download_cover_if_needed(bvid, cover_url, video["id"])
+                        
+            except Exception as e:
+                error_msg = f"下载视频 {video_data.get('title', 'Unknown')} 封面失败: {e}"
+                error_traceback = traceback.format_exc()
+                logger.error(f"{error_msg}\n错误栈:\n{error_traceback}")
+                self.context.stats["errors"].append(error_msg)
+        
+        logger.info(f"收藏夹 {title} 封面下载完成")
 
 
 # 创建全局服务实例

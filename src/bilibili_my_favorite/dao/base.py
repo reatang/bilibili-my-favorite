@@ -3,10 +3,6 @@
 提供通用的数据库操作方法
 """
 import aiosqlite
-import asyncio
-import atexit
-import signal
-import sys
 import traceback
 from typing import Optional, Dict, Any, List, ClassVar
 from ..core.config import config
@@ -45,11 +41,6 @@ class DatabaseManager:
             self._initialized = True
             logger.info("数据库连接已初始化，启用WAL模式和性能优化")
             
-            # 注册清理函数
-            atexit.register(self._cleanup_sync)
-            signal.signal(signal.SIGINT, self._signal_handler)
-            signal.signal(signal.SIGTERM, self._signal_handler)
-            
         except Exception as e:
             logger.error(f"数据库初始化失败: {e}")
             raise
@@ -65,27 +56,6 @@ class DatabaseManager:
             finally:
                 self._connection = None
                 self._initialized = False
-    
-    def _cleanup_sync(self):
-        """同步清理函数（用于atexit）"""
-        if self._connection:
-            try:
-                # 在事件循环中运行异步清理
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # 如果事件循环正在运行，创建任务
-                    loop.create_task(self.close())
-                else:
-                    # 如果事件循环已停止，直接运行
-                    loop.run_until_complete(self.close())
-            except Exception as e:
-                logger.error(f"清理数据库连接时出错: {e}")
-    
-    def _signal_handler(self, signum, frame):
-        """信号处理器"""
-        logger.info(f"接收到信号 {signum}，正在清理资源...")
-        self._cleanup_sync()
-        sys.exit(0)
     
     @property
     def connection(self) -> aiosqlite.Connection:

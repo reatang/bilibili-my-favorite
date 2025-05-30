@@ -4,6 +4,7 @@ FastAPI应用程序主文件
 """
 import os
 from pathlib import Path
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -12,15 +13,78 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from bilibili_my_favorite.core.config import config
 from bilibili_my_favorite.utils.logger import logger
+from bilibili_my_favorite.utils.encoding import setup_encoding
 from bilibili_my_favorite.api.collections import router as collections_router
 from bilibili_my_favorite.api.videos import router as videos_router
+from bilibili_my_favorite.api.tasks import router as tasks_router
 from bilibili_my_favorite.dao.base import BaseDAO
 from bilibili_my_favorite.api.models import SyncRequest
+from bilibili_my_favorite.services.task_manager import task_manager
+from bilibili_my_favorite.models.types import GlobalStatsDict
 
 from dotenv import load_dotenv
 
 # 加载环境变量
 load_dotenv()
+
+# 在应用创建前设置编码
+setup_encoding()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理"""
+    # 启动事件
+    logger.info("B站收藏夹管理系统启动中...")
+    
+    try:
+        # 初始化数据库连接
+        await BaseDAO.initialize_database()
+        logger.info("数据库连接初始化成功")
+        
+        # 初始化任务管理器
+        from .dao.task_dao import task_dao
+        table_exists = await task_dao.table_exists()
+        if not table_exists:
+            logger.warning("任务表不存在，任务管理功能将不可用")
+            logger.warning("请运行 'python -m src.cli init-db' 初始化数据库表")
+        else:
+            await task_manager.initialize()
+            logger.info("任务管理器初始化成功")
+        
+        # 确保必要目录存在
+        config.ensure_actual_directories()
+        
+        # 检查B站凭据
+        if not config.validate_bilibili_credentials():
+            logger.warning("B站API凭据不完整，同步功能可能无法正常工作")
+        
+        logger.info("应用启动完成")
+        
+    except Exception as e:
+        logger.error(f"数据库或任务管理器初始化失败: {e}")
+        raise
+    
+    yield  # 这里应用开始运行
+    
+    # 关闭事件
+    logger.info("B站收藏夹管理系统正在关闭...")
+    
+    # 关闭任务管理器
+    try:
+        task_manager.shutdown()
+        logger.info("任务管理器已关闭")
+    except Exception as e:
+        logger.error(f"关闭任务管理器时出错: {e}")
+    
+    # 关闭数据库连接
+    try:
+        await BaseDAO.close_database()
+        logger.info("数据库连接已关闭")
+    except Exception as e:
+        logger.error(f"关闭数据库连接时出错: {e}")
+    
+    logger.info("应用关闭完成")
 
 
 # 创建FastAPI应用
@@ -29,7 +93,8 @@ app = FastAPI(
     description="本地同步和管理B站收藏夹的Web应用",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # 添加CORS中间件
@@ -60,52 +125,7 @@ if static_dir.exists():
 # 注册API路由
 app.include_router(collections_router)
 app.include_router(videos_router)
-
-
-@app.on_event("startup")
-async def startup_event():
-    """应用启动事件"""
-    logger.info("B站收藏夹管理系统启动中...")
-    
-    # 初始化数据库连接
-    try:
-        await BaseDAO.initialize_database()
-        logger.info("数据库连接初始化成功")
-        
-        # 检查并执行数据库迁移
-        from .models.database_migration import check_migration_needed, migrate_database
-        if await check_migration_needed():
-            logger.info("检测到需要数据库迁移，开始执行...")
-            await migrate_database()
-            logger.info("数据库迁移完成")
-        
-    except Exception as e:
-        logger.error(f"数据库初始化或迁移失败: {e}")
-        raise
-    
-    # 确保必要目录存在
-    config.ensure_actual_directories()
-    
-    # 检查B站凭据
-    if not config.validate_bilibili_credentials():
-        logger.warning("B站API凭据不完整，同步功能可能无法正常工作")
-    
-    logger.info("应用启动完成")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """应用关闭事件"""
-    logger.info("B站收藏夹管理系统正在关闭...")
-    
-    # 关闭数据库连接
-    try:
-        await BaseDAO.close_database()
-        logger.info("数据库连接已关闭")
-    except Exception as e:
-        logger.error(f"关闭数据库连接时出错: {e}")
-    
-    logger.info("应用关闭完成")
+app.include_router(tasks_router)
 
 
 @app.exception_handler(404)
@@ -189,9 +209,15 @@ async def stats_page(request: Request):
     return templates.TemplateResponse("stats.html", {"request": request})
 
 
+@app.get("/tasks", response_class=HTMLResponse, summary="任务管理页面")
+async def tasks_page(request: Request):
+    """显示任务管理页面"""
+    return templates.TemplateResponse("tasks.html", {"request": request})
+
+
 # 全局统计端点
 @app.get("/api/stats", summary="获取全局统计信息")
-async def get_global_stats():
+async def get_global_stats() -> GlobalStatsDict:
     """获取全局统计信息"""
     try:
         from .dao.collection_dao import collection_dao
@@ -201,12 +227,12 @@ async def get_global_stats():
         total_collections = len(collections)
         
         if total_collections == 0:
-            return {
-                "total_collections": 0,
-                "total_videos": 0,
-                "available_videos": 0,
-                "deleted_videos": 0
-            }
+            return GlobalStatsDict(
+                total_collections=0,
+                total_videos=0,
+                available_videos=0,
+                deleted_videos=0
+            )
         
         # 计算总体统计
         total_videos = 0
@@ -219,12 +245,12 @@ async def get_global_stats():
             available_videos += stats.get("available_videos", 0)
             deleted_videos += stats.get("deleted_videos", 0)
         
-        return {
-            "total_collections": total_collections,
-            "total_videos": total_videos,
-            "available_videos": available_videos,
-            "deleted_videos": deleted_videos
-        }
+        return GlobalStatsDict(
+            total_collections=total_collections,
+            total_videos=total_videos,
+            available_videos=available_videos,
+            deleted_videos=deleted_videos
+        )
     except Exception as e:
         logger.error(f"获取全局统计信息失败: {e}")
         raise HTTPException(status_code=500, detail="获取统计信息失败")
