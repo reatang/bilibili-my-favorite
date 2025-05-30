@@ -377,7 +377,8 @@ def serve(host: str, port: int, reload: bool):
             host=host,
             port=port,
             reload=reload,
-            log_level=config.LOG_LEVEL.lower()
+            log_level=config.LOG_LEVEL.lower(),
+            access_log=False,
         )
     except KeyboardInterrupt:
         console.print("\n[yellow]服务器已停止[/yellow]")
@@ -394,13 +395,6 @@ def init_db():
             # 初始化数据库
             from bilibili_my_favorite.models.database import initialize_database
             await initialize_database()
-            
-            # 检查并执行迁移
-            from bilibili_my_favorite.models.database_migration import check_migration_needed, migrate_database
-            if await check_migration_needed():
-                console.print("[bold yellow]检测到需要数据库迁移，开始执行...[/bold yellow]")
-                await migrate_database()
-                console.print("[bold green]数据库迁移完成![/bold green]")
             
             # 初始化任务表
             console.print("[bold blue]初始化任务系统表...[/bold blue]")

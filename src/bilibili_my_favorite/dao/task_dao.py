@@ -107,7 +107,7 @@ class TaskDAO(BaseDAO):
                     priority = ?, max_retries = ?, retry_count = ?, timeout = ?
                 WHERE task_id = ?
                 """
-                await self.execute_query(update_sql, (
+                await self.execute_update(update_sql, (
                     task.task_type.value,
                     task.title,
                     task.description,
@@ -134,7 +134,8 @@ class TaskDAO(BaseDAO):
                     priority, max_retries, retry_count, timeout
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """
-                await self.execute_query(insert_sql, (
+
+                await self.execute_insert(insert_sql, (
                     task.task_id,
                     task.task_type.value,
                     task.title,

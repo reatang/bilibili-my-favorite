@@ -36,7 +36,7 @@ app = FastAPI(
     description="本地同步和管理B站收藏夹的Web应用",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
 )
 
 # 添加CORS中间件
@@ -79,13 +79,6 @@ async def startup_event():
     try:
         await BaseDAO.initialize_database()
         logger.info("数据库连接初始化成功")
-        
-        # 检查并执行数据库迁移
-        from .models.database_migration import check_migration_needed, migrate_database
-        if await check_migration_needed():
-            logger.info("检测到需要数据库迁移，开始执行...")
-            await migrate_database()
-            logger.info("数据库迁移完成")
         
         # 初始化任务管理器
         from .dao.task_dao import task_dao
