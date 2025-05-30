@@ -24,7 +24,7 @@ class Config(BaseSettings):
     COVERS_DIR: Optional[Path] = "./covers"
     TEMPLATES_DIR: Optional[Path] = "./templates"
     DATA_DIR: Optional[Path] = "./data"
-    VIDEOS_DIR: Optional[Path] = "./videos"
+    VIDEOS_DIR: Optional[Path] = "./video_downloads"
 
 
     # B站API配置 与原始cookies配置 二选一
@@ -91,7 +91,7 @@ class Config(BaseSettings):
 
         # VIDEOS_DIR
         if self.VIDEOS_DIR is None:
-            self.VIDEOS_DIR = base_dir / "videos"
+            self.VIDEOS_DIR = base_dir / "video_downloads"
         elif not self.VIDEOS_DIR.is_absolute():
             self.VIDEOS_DIR = (base_dir / self.VIDEOS_DIR).resolve()
         else:
