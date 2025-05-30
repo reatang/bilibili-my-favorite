@@ -4,6 +4,7 @@ FastAPI应用程序主文件
 """
 import os
 from pathlib import Path
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -30,6 +31,62 @@ load_dotenv()
 setup_encoding()
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理"""
+    # 启动事件
+    logger.info("B站收藏夹管理系统启动中...")
+    
+    try:
+        # 初始化数据库连接
+        await BaseDAO.initialize_database()
+        logger.info("数据库连接初始化成功")
+        
+        # 初始化任务管理器
+        from .dao.task_dao import task_dao
+        table_exists = await task_dao.table_exists()
+        if not table_exists:
+            logger.warning("任务表不存在，任务管理功能将不可用")
+            logger.warning("请运行 'python -m src.cli init-db' 初始化数据库表")
+        else:
+            await task_manager.initialize()
+            logger.info("任务管理器初始化成功")
+        
+        # 确保必要目录存在
+        config.ensure_actual_directories()
+        
+        # 检查B站凭据
+        if not config.validate_bilibili_credentials():
+            logger.warning("B站API凭据不完整，同步功能可能无法正常工作")
+        
+        logger.info("应用启动完成")
+        
+    except Exception as e:
+        logger.error(f"数据库或任务管理器初始化失败: {e}")
+        raise
+    
+    yield  # 这里应用开始运行
+    
+    # 关闭事件
+    logger.info("B站收藏夹管理系统正在关闭...")
+    
+    # 关闭任务管理器
+    try:
+        task_manager.shutdown()
+        logger.info("任务管理器已关闭")
+    except Exception as e:
+        logger.error(f"关闭任务管理器时出错: {e}")
+    
+    # 关闭数据库连接
+    try:
+        await BaseDAO.close_database()
+        logger.info("数据库连接已关闭")
+    except Exception as e:
+        logger.error(f"关闭数据库连接时出错: {e}")
+    
+    logger.info("应用关闭完成")
+
+
 # 创建FastAPI应用
 app = FastAPI(
     title="B站收藏夹管理系统",
@@ -37,6 +94,7 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # 添加CORS中间件
@@ -68,62 +126,6 @@ if static_dir.exists():
 app.include_router(collections_router)
 app.include_router(videos_router)
 app.include_router(tasks_router)
-
-
-@app.on_event("startup")
-async def startup_event():
-    """应用启动事件"""
-    logger.info("B站收藏夹管理系统启动中...")
-    
-    # 初始化数据库连接
-    try:
-        await BaseDAO.initialize_database()
-        logger.info("数据库连接初始化成功")
-        
-        # 初始化任务管理器
-        from .dao.task_dao import task_dao
-        table_exists = await task_dao.table_exists()
-        if not table_exists:
-            logger.warning("任务表不存在，任务管理功能将不可用")
-            logger.warning("请运行 'python -m src.cli init-db' 初始化数据库表")
-        else:
-            await task_manager.initialize()
-            logger.info("任务管理器初始化成功")
-        
-    except Exception as e:
-        logger.error(f"数据库或任务管理器初始化失败: {e}")
-        raise
-    
-    # 确保必要目录存在
-    config.ensure_actual_directories()
-    
-    # 检查B站凭据
-    if not config.validate_bilibili_credentials():
-        logger.warning("B站API凭据不完整，同步功能可能无法正常工作")
-    
-    logger.info("应用启动完成")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """应用关闭事件"""
-    logger.info("B站收藏夹管理系统正在关闭...")
-    
-    # 关闭任务管理器
-    try:
-        task_manager.shutdown()
-        logger.info("任务管理器已关闭")
-    except Exception as e:
-        logger.error(f"关闭任务管理器时出错: {e}")
-    
-    # 关闭数据库连接
-    try:
-        await BaseDAO.close_database()
-        logger.info("数据库连接已关闭")
-    except Exception as e:
-        logger.error(f"关闭数据库连接时出错: {e}")
-    
-    logger.info("应用关闭完成")
 
 
 @app.exception_handler(404)
