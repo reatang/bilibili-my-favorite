@@ -21,6 +21,17 @@ class ProcessCollection(TypedDict):
     fav_state: int
     media_count: int
 
+class SyncContextStats(TypedDict):
+    collections_processed: int
+    videos_added: int
+    videos_updated: int
+    videos_deleted: int
+    videos_restored: int
+    covers_downloaded: int
+    errors: List[str]
+    deleted_videos: List[str]
+    restored_videos: List[str]
+
 class SyncContext:
     """同步上下文管理器"""
     
@@ -40,7 +51,7 @@ class SyncContext:
         self.failed_collections: List[Dict[str, Any]] = []
         
         # 统计信息
-        self.stats = {
+        self.stats : SyncContextStats = {
             "collections_processed": 0,
             "videos_added": 0,
             "videos_updated": 0,

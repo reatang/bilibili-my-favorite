@@ -35,11 +35,7 @@ class SuperCredential(Credential):
             ac_time_value=ac_time_value,
         )
 
-        # 检测bili_ticket_expires超时
-        bili_ticket_expires = int(self.super_cookies.get('bili_ticket_expires'))
-        if bili_ticket_expires is not None and bili_ticket_expires < time.time():
-            raise Exception("[SuperCredential] bili_ticket_expires超时，请重新从浏览器获取")
-            
+
     def _parse_raw_cookies(self, raw_cookies: str):
         """
         解析原始 cookies 字符串

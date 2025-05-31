@@ -1,0 +1,56 @@
+# Git相关
+.git
+.gitignore
+
+# Python相关
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.coverage
+.pytest_cache
+*.egg-info
+
+# 虚拟环境
+venv/
+env/
+.venv/
+
+# 数据文件（这些应该通过卷挂载）
+bilibili_favorites.db*
+covers/
+data/
+video_downloads/
+logs/
+docker-data/
+
+# 开发工具
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS文件
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.tmp
+*.log
+
+# Docker相关
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# 文档
+README.md
+README_DOCKER.md
+*.md
+
+# 环境变量文件（包含敏感信息）
+.env
+.env.local
+.env.example 

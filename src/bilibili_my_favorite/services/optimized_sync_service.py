@@ -10,7 +10,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
-from .sync_context import SyncContext
+from .sync_context import SyncContext, SyncContextStats
 from .bilibili_service import bilibili_service
 from ..dao.collection_dao import collection_dao
 from ..dao.video_dao import video_dao
@@ -30,7 +30,7 @@ class OptimizedSyncService:
     def __init__(self):
         self.context: Optional[SyncContext] = None
     
-    async def sync_all_favorites(self, uid: str = None, resume_task_id: str = None) -> Dict[str, Any]:
+    async def sync_all_favorites(self, uid: str = None, resume_task_id: str = None) -> SyncContextStats:
         """
         同步所有收藏夹（优化版本 - 三步走）
         
@@ -83,17 +83,19 @@ class OptimizedSyncService:
                 return stats
             else:
                 logger.error(f"同步过程中发生错误: {e}")
-                return {
-                    "collections_processed": 0,
-                    "videos_added": 0,
-                    "videos_updated": 0,
-                    "videos_deleted": 0,
-                    "covers_downloaded": 0,
-                    "errors": [f"同步失败: {e}"],
-                    "deleted_videos": []
-                }
+                return SyncContextStats(
+                    collections_processed=0,
+                    videos_added=0,
+                    videos_updated=0,
+                    videos_deleted=0,
+                    videos_restored=0,
+                    covers_downloaded=0,
+                    errors=[f"同步失败: {e}"],
+                    deleted_videos=[],
+                    restored_videos=[]
+                )
     
-    async def sync_single_collection(self, bilibili_fid: str) -> Dict[str, Any]:
+    async def sync_single_collection(self, bilibili_fid: str) -> SyncContextStats:
         """
         同步单个收藏夹（优化版本）
         
@@ -151,15 +153,17 @@ class OptimizedSyncService:
                 return self.context.stats
             else:
                 logger.error(f"同步收藏夹 {bilibili_fid} 失败: {e}")
-                return {
-                    "collections_processed": 0,
-                    "videos_added": 0,
-                    "videos_updated": 0,
-                    "videos_deleted": 0,
-                    "covers_downloaded": 0,
-                    "errors": [f"同步收藏夹 {bilibili_fid} 失败: {e}"],
-                    "deleted_videos": []
-                }
+                return SyncContextStats(
+                    collections_processed=0,
+                    videos_added=0,
+                    videos_updated=0,
+                    videos_deleted=0,
+                    videos_restored=0,
+                    covers_downloaded=0,
+                    errors=[f"同步收藏夹 {bilibili_fid} 失败: {e}"],
+                    deleted_videos=[],
+                    restored_videos=[]
+                )
     
     async def list_sync_tasks(self) -> List[Dict[str, Any]]:
         """列出所有同步任务"""

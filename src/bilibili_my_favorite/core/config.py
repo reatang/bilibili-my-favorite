@@ -17,15 +17,18 @@ class Config(BaseSettings):
     # 项目根目录
     BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent
 
+    # Docker数据目录 - 统一数据存储目录
+    DATA_ROOT: Optional[Path] = None
+
     # 数据库配置
-    DATABASE_PATH: Optional[Path] = "./bilibili_favorites.db"
+    DATABASE_PATH: Optional[Path] = None
 
     # 文件存储配置
-    COVERS_DIR: Optional[Path] = "./covers"
+    COVERS_DIR: Optional[Path] = None
     TEMPLATES_DIR: Optional[Path] = "./templates"
-    DATA_DIR: Optional[Path] = "./data"
-    VIDEOS_DIR: Optional[Path] = "./video_downloads"
-
+    DATA_DIR: Optional[Path] = None
+    VIDEOS_DIR: Optional[Path] = None
+    LOGS_DIR: Optional[Path] = None
 
     # B站API配置 与原始cookies配置 二选一
     USER_DEDE_USER_ID: Optional[str] = None
@@ -55,53 +58,77 @@ class Config(BaseSettings):
 
     @model_validator(mode='after')
     def set_default_paths(self) -> 'Config':
-        base_dir = self.BASE_DIR
+        """设置默认路径，支持Docker容器化部署"""
+        
+        # 确定数据根目录
+        # 优先级：环境变量 DATA_ROOT > Docker默认路径 /app/data > 项目根目录
+        if self.DATA_ROOT is None:
+            # 检查是否在Docker环境中
+            docker_data_path = Path("/data")
+            if docker_data_path.exists() and Path("/.dockerenv").exists():
+                # Docker环境，使用容器内数据目录
+                self.DATA_ROOT = docker_data_path
+            else:
+                # 本地开发环境，使用项目根目录
+                self.DATA_ROOT = self.BASE_DIR
+        elif not self.DATA_ROOT.is_absolute():
+            self.DATA_ROOT = (self.BASE_DIR / self.DATA_ROOT).resolve()
+        else:
+            self.DATA_ROOT = self.DATA_ROOT.resolve()
 
-        # DATABASE_PATH
+        # 设置数据库路径
         if self.DATABASE_PATH is None:
-            self.DATABASE_PATH = base_dir / "bilibili_favorites.db"
+            self.DATABASE_PATH = self.DATA_ROOT / "bilibili_favorites.db"
         elif not self.DATABASE_PATH.is_absolute():
-            self.DATABASE_PATH = (base_dir / self.DATABASE_PATH).resolve()
+            self.DATABASE_PATH = (self.DATA_ROOT / self.DATABASE_PATH).resolve()
         else:
             self.DATABASE_PATH = self.DATABASE_PATH.resolve()
         
-        # COVERS_DIR
+        # 设置封面目录
         if self.COVERS_DIR is None:
-            self.COVERS_DIR = base_dir / "covers"
+            self.COVERS_DIR = self.DATA_ROOT / "covers"
         elif not self.COVERS_DIR.is_absolute():
-            self.COVERS_DIR = (base_dir / self.COVERS_DIR).resolve()
+            self.COVERS_DIR = (self.DATA_ROOT / self.COVERS_DIR).resolve()
         else:
             self.COVERS_DIR = self.COVERS_DIR.resolve()
 
-        # TEMPLATES_DIR
+        # 设置模板目录（相对于项目根目录，不放在数据目录中）
         if self.TEMPLATES_DIR is None:
-            self.TEMPLATES_DIR = base_dir / "templates"
+            self.TEMPLATES_DIR = self.BASE_DIR / "templates"
         elif not self.TEMPLATES_DIR.is_absolute():
-            self.TEMPLATES_DIR = (base_dir / self.TEMPLATES_DIR).resolve()
+            self.TEMPLATES_DIR = (self.BASE_DIR / self.TEMPLATES_DIR).resolve()
         else:
             self.TEMPLATES_DIR = self.TEMPLATES_DIR.resolve()
 
-        # DATA_DIR
+        # 设置数据临时存储目录
         if self.DATA_DIR is None:
-            self.DATA_DIR = base_dir / "data"
+            self.DATA_DIR = self.DATA_ROOT / "data"
         elif not self.DATA_DIR.is_absolute():
-            self.DATA_DIR = (base_dir / self.DATA_DIR).resolve()
+            self.DATA_DIR = (self.DATA_ROOT / self.DATA_DIR).resolve()
         else:
             self.DATA_DIR = self.DATA_DIR.resolve()
 
-        # VIDEOS_DIR
+        # 设置视频下载目录
         if self.VIDEOS_DIR is None:
-            self.VIDEOS_DIR = base_dir / "video_downloads"
+            self.VIDEOS_DIR = self.DATA_ROOT / "video_downloads"
         elif not self.VIDEOS_DIR.is_absolute():
-            self.VIDEOS_DIR = (base_dir / self.VIDEOS_DIR).resolve()
+            self.VIDEOS_DIR = (self.DATA_ROOT / self.VIDEOS_DIR).resolve()
         else:
             self.VIDEOS_DIR = self.VIDEOS_DIR.resolve()
 
-        # LOG_FILE
+        # 设置日志目录
+        if self.LOGS_DIR is None:
+            self.LOGS_DIR = self.DATA_ROOT / "logs"
+        elif not self.LOGS_DIR.is_absolute():
+            self.LOGS_DIR = (self.DATA_ROOT / self.LOGS_DIR).resolve()
+        else:
+            self.LOGS_DIR = self.LOGS_DIR.resolve()
+
+        # 设置日志文件路径
         if self.LOG_FILE is None:
-            self.LOG_FILE = base_dir / "logs" / "app.log"
+            self.LOG_FILE = self.LOGS_DIR / "app.log"
         elif not self.LOG_FILE.is_absolute():
-            self.LOG_FILE = (base_dir / self.LOG_FILE).resolve()
+            self.LOG_FILE = (self.LOGS_DIR / self.LOG_FILE).resolve()
         else:
             self.LOG_FILE = self.LOG_FILE.resolve()
             
@@ -131,15 +158,38 @@ class Config(BaseSettings):
 
     def ensure_actual_directories(self) -> None:
         """确保必要的目录存在"""
-        # These paths are now guaranteed to be Path objects and absolute
-        if not self.COVERS_DIR.exists():
-             self.COVERS_DIR.mkdir(parents=True, exist_ok=True)
-        if not self.DATA_DIR.exists():
-             self.DATA_DIR.mkdir(parents=True, exist_ok=True)
-        if not self.VIDEOS_DIR.exists():
-             self.VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
-        if not self.LOG_FILE.parent.exists():
-             self.LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        # 确保数据根目录存在
+        if not self.DATA_ROOT.exists():
+            self.DATA_ROOT.mkdir(parents=True, exist_ok=True)
+            
+        # 确保各个子目录存在
+        directories_to_create = [
+            self.COVERS_DIR,
+            self.DATA_DIR,
+            self.VIDEOS_DIR,
+            self.LOGS_DIR,
+        ]
+        
+        for directory in directories_to_create:
+            if not directory.exists():
+                directory.mkdir(parents=True, exist_ok=True)
+
+        # 模板目录通常不需要动态创建，但如果不存在也创建
+        if not self.TEMPLATES_DIR.exists():
+            self.TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+
+    def get_data_summary(self) -> dict:
+        """获取数据目录配置摘要，用于调试和日志"""
+        return {
+            "data_root": str(self.DATA_ROOT),
+            "database_path": str(self.DATABASE_PATH),
+            "covers_dir": str(self.COVERS_DIR),
+            "data_dir": str(self.DATA_DIR),
+            "videos_dir": str(self.VIDEOS_DIR),
+            "logs_dir": str(self.LOGS_DIR),
+            "templates_dir": str(self.TEMPLATES_DIR),
+            "is_docker_env": Path("/.dockerenv").exists() or str(self.DATA_ROOT).startswith("/app/data")
+        }
 
 
 # 创建全局配置实例

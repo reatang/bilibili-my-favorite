@@ -4,6 +4,7 @@ B站API服务
 """
 import asyncio
 import random
+import os
 from typing import List, Dict, Any, Optional
 from ..core.config import config
 from ..core.credential import SuperCredential
@@ -80,7 +81,7 @@ class BilibiliService:
             )
 
             if not response or not response.get("list"):
-                logger.warning("未获取到收藏夹列表或列表为空")
+                logger.warning(f"未获取到收藏夹列表或列表为空 {response}")
                 return []
             
             collections = response["list"]

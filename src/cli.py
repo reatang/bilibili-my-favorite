@@ -3,6 +3,7 @@
 提供同步和管理功能的CLI接口
 """
 import asyncio
+import os
 import json
 import sys
 import traceback
@@ -11,6 +12,8 @@ import click
 from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
+
+from bilibili_api.utils.network import request_log
 
 from bilibili_my_favorite.core.config import config
 from bilibili_my_favorite.services.bilibili_service import bilibili_service
@@ -26,7 +29,9 @@ from bilibili_my_favorite.services.sync_context import SyncContext
 from dotenv import load_dotenv
 
 # 加载环境变量
-load_dotenv()
+load_dotenv(override=True)
+
+print(os.environ["RAW_COOKIES"])
 
 # 设置编码环境
 setup_encoding()
@@ -38,6 +43,9 @@ def async_command(f):
     """异步命令装饰器，自动处理数据库生命周期"""
     def wrapper(*args, **kwargs):
         async def run_with_db():
+
+            # request_log.set_on(True)
+
             try:
                 # 初始化数据库连接
                 await BaseDAO.initialize_database()
@@ -143,13 +151,14 @@ def sync(collection_id: Optional[str], force: bool):
         table = Table(title="同步统计")
         table.add_column("项目", style="cyan")
         table.add_column("数量", style="magenta")
-        
-        table.add_row("处理的收藏夹", str(stats["collections_processed"]))
-        table.add_row("新增视频", str(stats["videos_added"]))
-        table.add_row("更新视频", str(stats["videos_updated"]))
-        table.add_row("删除视频", str(stats["videos_deleted"]))
-        table.add_row("恢复视频", str(stats["videos_restored"]))
-        table.add_row("下载封面", str(stats["covers_downloaded"]))
+
+        if stats:
+            table.add_row("处理的收藏夹", str(stats["collections_processed"]))
+            table.add_row("新增视频", str(stats["videos_added"]))
+            table.add_row("更新视频", str(stats["videos_updated"]))
+            table.add_row("删除视频", str(stats["videos_deleted"]))
+            table.add_row("恢复视频", str(stats["videos_restored"]))
+            table.add_row("下载封面", str(stats["covers_downloaded"]))
         
         console.print(table)
         

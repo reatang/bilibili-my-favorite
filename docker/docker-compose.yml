@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  bilibili-favorites:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      # 挂载数据目录到宿主机，实现数据持久化
+      - ./docker-data:/app/data
+      # 可选：挂载环境变量文件
+      - ./.env:/app/.env:ro
+    environment:
+      # Docker环境变量配置
+      - DATA_ROOT=/app/data
+      - WEB_HOST=0.0.0.0
+      - WEB_PORT=8000
+      - LOG_LEVEL=INFO
+      # B站API凭据（也可以在.env文件中设置）
+      # - USER_DEDE_USER_ID=your_user_id
+      # - USER_SESSDATA=your_sessdata
+      # - USER_BILI_JCT=your_bili_jct
+      # - USER_BUVID3=your_buvid3
+    restart: unless-stopped
+    container_name: bilibili-favorites
+
+# 可选：如果需要使用外部数据卷
+# volumes:
+#   bilibili_data:
+#     driver: local 
