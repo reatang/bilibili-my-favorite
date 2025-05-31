@@ -31,8 +31,6 @@ from dotenv import load_dotenv
 # 加载环境变量
 load_dotenv(override=True)
 
-print(os.environ["RAW_COOKIES"])
-
 # 设置编码环境
 setup_encoding()
 

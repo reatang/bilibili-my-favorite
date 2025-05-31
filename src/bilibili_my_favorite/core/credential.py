@@ -2,6 +2,8 @@ import urllib.parse
 import time
 from bilibili_api import Credential
 from bilibili_api.exceptions import ArgsException
+from bilibili_my_favorite.utils.logger import logger
+
 
 class SuperCredential(Credential):
     """
@@ -34,6 +36,12 @@ class SuperCredential(Credential):
             dedeuserid=original_cookies.get('dedeuserid'),
             ac_time_value=ac_time_value,
         )
+
+        # 检测bili_ticket_expires超时Add commentMore actions
+        bili_ticket_expires = int(self.super_cookies.get('bili_ticket_expires'))
+        if bili_ticket_expires is not None and bili_ticket_expires < time.time():
+            logger.warning("[SuperCredential] bili_ticket_expires超时，Cookie可能已过期，如果功能受影响请重新从浏览器获取")
+            
 
 
     def _parse_raw_cookies(self, raw_cookies: str):

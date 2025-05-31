@@ -71,7 +71,6 @@ class OptimizedSyncService:
             # 清理临时文件
             self.context.cleanup()
             
-            logger.info(f"同步完成，统计信息: {stats}")
             return stats
             
         except Exception as e:
