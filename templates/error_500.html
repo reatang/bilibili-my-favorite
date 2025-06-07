@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌸 服务器开小差了 🌸</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'kawaii-pink': '#FFB7D1',
+                        'kawaii-purple': '#C8A8E9',
+                        'kawaii-blue': '#A8D8EA',
+                        'kawaii-yellow': '#FFFACD',
+                        'kawaii-mint': '#B8E6B8',
+                    },
+                    animation: {
+                        'wobble': 'wobble 2s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        wobble: {
+                            '0%, 100%': { transform: 'rotate(0deg)' },
+                            '25%': { transform: 'rotate(-5deg)' },
+                            '75%': { transform: 'rotate(5deg)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap');
+        * {
+            font-family: 'Noto Sans SC', sans-serif;
+        }
+        body {
+            background: linear-gradient(135deg, #FFE4E6 0%, #E8D5FF 50%, #D1E7FF 100%);
+            min-height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        function App() {
+            return (
+                <div className="min-h-screen flex items-center justify-center px-4">
+                    <div className="text-center">
+                        <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-12 border border-pink-200 max-w-md mx-auto">
+                            {/* 可爱的500图标 */}
+                            <div className="text-8xl mb-6 animate-wobble">
+                                🤖
+                            </div>
+                            
+                            {/* 主要文字 */}
+                            <h1 className="text-6xl font-bold bg-gradient-to-r from-red-500 via-orange-500 to-yellow-500 bg-clip-text text-transparent mb-4">
+                                500
+                            </h1>
+                            
+                            <h2 className="text-2xl font-bold text-gray-800 mb-4">
+                                服务器开小差了~ (╥﹏╥)
+                            </h2>
+                            
+                            <p className="text-gray-600 mb-8 leading-relaxed">
+                                服务器君好像累了，正在偷偷睡觉~<br/>
+                                请稍等一下再试试吧 💤
+                            </p>
+                            
+                            {/* 可爱的按钮们 */}
+                            <div className="space-y-4">
+                                <button 
+                                    onClick={() => window.location.reload()}
+                                    className="inline-block w-full bg-gradient-to-r from-kawaii-pink to-kawaii-purple text-white font-bold py-4 px-8 rounded-2xl hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
+                                >
+                                    🔄 重新尝试
+                                </button>
+                                
+                                <a 
+                                    href="/" 
+                                    className="inline-block w-full bg-gradient-to-r from-kawaii-blue to-kawaii-mint text-white font-bold py-4 px-8 rounded-2xl hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
+                                >
+                                    🏠 回到首页
+                                </a>
+                            </div>
+                            
+                            {/* 错误详情（如果有的话） */}
+                            <div className="mt-6 p-4 bg-red-50 rounded-2xl border border-red-200">
+                                <p className="text-sm text-red-600">
+                                    <strong>技术细节:</strong> 内部服务器错误
+                                </p>
+                                <p className="text-xs text-red-500 mt-1">
+                                    如果问题持续出现，请联系管理员 🛠️
+                                </p>
+                            </div>
+                        </div>
+                        
+                        {/* 页脚文字 */}
+                        <p className="text-gray-500 mt-8 text-sm">
+                            💖 Made with love for anime lovers
+                        </p>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html> 

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌸 页面找不到了 🌸</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'kawaii-pink': '#FFB7D1',
+                        'kawaii-purple': '#C8A8E9',
+                        'kawaii-blue': '#A8D8EA',
+                        'kawaii-yellow': '#FFFACD',
+                        'kawaii-mint': '#B8E6B8',
+                    },
+                    animation: {
+                        'float': 'float 3s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0px)' },
+                            '50%': { transform: 'translateY(-20px)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap');
+        * {
+            font-family: 'Noto Sans SC', sans-serif;
+        }
+        body {
+            background: linear-gradient(135deg, #FFE4E6 0%, #E8D5FF 50%, #D1E7FF 100%);
+            min-height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        function App() {
+            return (
+                <div className="min-h-screen flex items-center justify-center px-4">
+                    <div className="text-center">
+                        <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-12 border border-pink-200 max-w-md mx-auto">
+                            {/* 可爱的404图标 */}
+                            <div className="text-8xl mb-6 animate-float">
+                                😿
+                            </div>
+                            
+                            {/* 主要文字 */}
+                            <h1 className="text-6xl font-bold bg-gradient-to-r from-pink-500 via-purple-500 to-blue-500 bg-clip-text text-transparent mb-4">
+                                404
+                            </h1>
+                            
+                            <h2 className="text-2xl font-bold text-gray-800 mb-4">
+                                页面不见了~ (´；ω；`)
+                            </h2>
+                            
+                            <p className="text-gray-600 mb-8 leading-relaxed">
+                                你要找的页面可能被小猫咪叼走了，<br/>
+                                或者输入的地址有误哦~ ✨
+                            </p>
+                            
+                            {/* 可爱的按钮们 */}
+                            <div className="space-y-4">
+                                <a 
+                                    href="/" 
+                                    className="inline-block w-full bg-gradient-to-r from-kawaii-pink to-kawaii-purple text-white font-bold py-4 px-8 rounded-2xl hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
+                                >
+                                    🏠 回到首页
+                                </a>
+                                
+                                <button 
+                                    onClick={() => window.history.back()}
+                                    className="inline-block w-full bg-gradient-to-r from-kawaii-blue to-kawaii-mint text-white font-bold py-4 px-8 rounded-2xl hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
+                                >
+                                    ← 返回上一页
+                                </button>
+                            </div>
+                        </div>
+                        
+                        {/* 页脚文字 */}
+                        <p className="text-gray-500 mt-8 text-sm">
+                            💖 Made with love for anime lovers
+                        </p>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>

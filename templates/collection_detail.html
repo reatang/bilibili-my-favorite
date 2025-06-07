@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎬 收藏夹详情 🎬</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/task-indicator.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'kawaii-pink': '#FFB7D1',
+                        'kawaii-purple': '#C8A8E9',
+                        'kawaii-blue': '#A8D8EA',
+                        'kawaii-yellow': '#FFFACD',
+                        'kawaii-mint': '#B8E6B8',
+                    },
+                    animation: {
+                        'bounce-slow': 'bounce 2s infinite',
+                        'pulse-slow': 'pulse 3s infinite',
+                        'float': 'float 3s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0px)' },
+                            '50%': { transform: 'translateY(-10px)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap');
+        * {
+            font-family: 'Noto Sans SC', sans-serif;
+        }
+        body {
+            background: linear-gradient(135deg, #FFE4E6 0%, #E8D5FF 50%, #D1E7FF 100%);
+            min-height: 100vh;
+        }
+        .sparkle::before {
+            content: '✨';
+            animation: pulse 2s infinite;
+        }
+        .heart::before {
+            content: '💖';
+            animation: pulse 1.5s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <!-- 全局任务状态指示器容器 -->
+    <div id="task-indicator-container"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // 格式化时长的函数
+        const formatDuration = (seconds) => {
+            if (!seconds || seconds <= 0) return '00:00:00';
+            
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        };
+
+        function App() {
+            const [collection, setCollection] = useState(null);
+            const [videos, setVideos] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [statusFilter, setStatusFilter] = useState('all');
+            const [collectionId, setCollectionId] = useState(null);
+            const [pagination, setPagination] = useState({
+                page: 1,
+                page_size: 20,
+                total: 0,
+                total_pages: 0
+            });
+
+            useEffect(() => {
+            const pathParts = window.location.pathname.split('/');
+                const id = pathParts[pathParts.length - 1];
+                setCollectionId(id);
+                fetchCollectionInfo(id);
+                fetchVideos(id);
+            }, []);
+
+            const fetchCollectionInfo = async (id) => {
+                try {
+                    const response = await fetch('/api/collections');
+                    const collections = await response.json();
+                    const currentCollection = collections.find(c => c.id == id);
+                    setCollection(currentCollection);
+                } catch (err) {
+                    console.error('Error fetching collection info:', err);
+                }
+            };
+
+            const fetchVideos = async (id, search = '', status = 'all', page = 1) => {
+                try {
+                    setLoading(true);
+                    let apiUrl = `/api/collections/${id}/videos?page=${page}&page_size=20`;
+                if (status !== 'all') {
+                    apiUrl += `&status=${status}`;
+                }
+                    if (search) {
+                        apiUrl += `&search=${encodeURIComponent(search)}`;
+                    }
+
+                    console.log('Fetching videos from:', apiUrl); // 临时调试
+
+                    const response = await fetch(apiUrl);
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                    const data = await response.json();
+                    console.log('API Response:', data); // 临时调试
+                    
+                    // 根据实际API响应格式处理数据
+                    if (data.pagination) {
+                        // 标准分页格式: {data: [...], pagination: {...}}
+                        setVideos(data.data || []);
+                        setPagination(data.pagination);
+                    } else if (data.items && Array.isArray(data.items)) {
+                        // API返回格式: {items: [...], page: 1, page_size: 20, total: 827, total_pages: 42}
+                        setVideos(data.items);
+                        
+                        // 检查是否有分页信息字段
+                        if (data.page !== undefined && data.total !== undefined) {
+                            setPagination({
+                                page: data.page || page,
+                                page_size: data.page_size || 20,
+                                total: data.total,
+                                total_pages: data.total_pages || Math.ceil(data.total / (data.page_size || 20))
+                            });
+                        } else {
+                            // 如果没有分页信息，使用collection.media_count计算
+                            const totalCount = collection ? collection.media_count : data.items.length;
+                            const pageSize = 20;
+                            setPagination({
+                                page: page,
+                                page_size: pageSize,
+                                total: totalCount,
+                                total_pages: Math.ceil(totalCount / pageSize)
+                            });
+                        }
+                    } else if (Array.isArray(data)) {
+                        // 直接数组格式: [...]
+                        setVideos(data);
+                        const totalCount = collection ? collection.media_count : data.length;
+                        const pageSize = 20;
+                        setPagination({
+                            page: page,
+                            page_size: pageSize,
+                            total: totalCount,
+                            total_pages: Math.ceil(totalCount / pageSize)
+                        });
+                    } else {
+                        // 其他格式，默认处理
+                        setVideos([]);
+                        setPagination({
+                            page: 1,
+                            page_size: 20,
+                            total: 0,
+                            total_pages: 1
+                        });
+                    }
+
+                    console.log('Final pagination:', pagination); // 临时调试
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const handleSearch = () => {
+                if (collectionId) {
+                    fetchVideos(collectionId, searchTerm, statusFilter, 1);
+                }
+            };
+
+            const handlePageChange = (newPage) => {
+                if (collectionId && newPage >= 1 && newPage <= pagination.total_pages) {
+                    fetchVideos(collectionId, searchTerm, statusFilter, newPage);
+                }
+            };
+
+            const handleKeyPress = (e) => {
+                if (e.key === 'Enter') {
+                    handleSearch();
+                }
+            };
+
+            // 分页组件 - 通过props管理自己的数据
+            const PaginationComponent = ({ currentPage, totalPages, onPageChange }) => {
+                // 只有超过1页时才显示分页
+                if (totalPages <= 1) {
+                    return null;
+                }
+
+                const getPageNumbers = () => {
+                    const pages = [];
+                    const maxVisiblePages = 5; // 最多显示5个页码
+
+                    if (totalPages <= maxVisiblePages) {
+                        // 总页数不超过5页，显示所有页码
+                        for (let i = 1; i <= totalPages; i++) {
+                            pages.push(i);
+                        }
+                    } else {
+                        // 总页数超过5页，需要智能显示
+                        if (currentPage <= 3) {
+                            // 当前页在前3页：[1][2][3][4]...[last]
+                            for (let i = 1; i <= 4; i++) {
+                                pages.push(i);
+                            }
+                            pages.push('...');
+                            pages.push(totalPages);
+                        } else if (currentPage >= totalPages - 2) {
+                            // 当前页在后3页：[1]...[last-3][last-2][last-1][last]
+                            pages.push(1);
+                            pages.push('...');
+                            for (let i = totalPages - 3; i <= totalPages; i++) {
+                                pages.push(i);
+                            }
+                        } else {
+                            // 当前页在中间：[1]...[current-1][current][current+1]...[last]
+                            pages.push(1);
+                            pages.push('...');
+                            pages.push(currentPage - 1);
+                            pages.push(currentPage);
+                            pages.push(currentPage + 1);
+                            pages.push('...');
+                            pages.push(totalPages);
+                        }
+                    }
+                    return pages;
+                };
+
+                return (
+                    <div className="flex items-center justify-center space-x-2 mt-8">
+                        {/* 上一页按钮 */}
+                        <button
+                            onClick={() => onPageChange(currentPage - 1)}
+                            disabled={currentPage <= 1}
+                            className={`px-4 py-2 rounded-xl font-medium transition-all duration-300 ${
+                                currentPage <= 1
+                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                    : 'bg-gradient-to-r from-kawaii-blue to-kawaii-purple text-white hover:shadow-lg transform hover:-translate-y-1'
+                            }`}
+                        >
+                            ← 上一页
+                        </button>
+
+                        {/* 页码按钮 */}
+                        {getPageNumbers().map((page, index) => (
+                            <button
+                                key={index}
+                                onClick={() => typeof page === 'number' && onPageChange(page)}
+                                disabled={page === '...'}
+                                className={`w-10 h-10 rounded-xl font-medium transition-all duration-300 ${
+                                    page === currentPage
+                                        ? 'bg-gradient-to-r from-kawaii-pink to-kawaii-purple text-white shadow-lg'
+                                        : page === '...'
+                                        ? 'text-gray-400 cursor-default'
+                                        : 'bg-white text-gray-600 hover:bg-gradient-to-r hover:from-kawaii-pink hover:to-kawaii-purple hover:text-white hover:shadow-md transform hover:-translate-y-1'
+                                }`}
+                            >
+                                {page}
+                            </button>
+                        ))}
+
+                        {/* 下一页按钮 */}
+                        <button
+                            onClick={() => onPageChange(currentPage + 1)}
+                            disabled={currentPage >= totalPages}
+                            className={`px-4 py-2 rounded-xl font-medium transition-all duration-300 ${
+                                currentPage >= totalPages
+                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                    : 'bg-gradient-to-r from-kawaii-blue to-kawaii-purple text-white hover:shadow-lg transform hover:-translate-y-1'
+                            }`}
+                        >
+                            下一页 →
+                        </button>
+                    </div>
+                );
+            };
+
+            // 视频下载功能
+            const handleDownloadVideo = async (video, quality = 80) => {
+                try {
+                    const response = await fetch('/api/tasks/download', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            bvid: video.bvid,
+                            quality: quality,
+                            page: 0
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const result = await response.json();
+                        alert(`下载任务已提交! 任务ID: ${result.task_id}\n请前往任务管理页面查看进度`);
+                    } else {
+                        const error = await response.json();
+                        alert(`提交下载任务失败: ${error.detail || '未知错误'}`);
+                    }
+                } catch (err) {
+                    alert(`下载任务提交失败: ${err.message}`);
+                }
+            };
+
+            // 显示下载选项弹窗
+            const showDownloadOptions = (video) => {
+                const quality = prompt(
+                    `选择视频质量:\n` +
+                    `16 - 360P\n` +
+                    `32 - 480P\n` +
+                    `64 - 720P\n` +
+                    `80 - 1080P (默认)\n` +
+                    `112 - 1080P+\n\n` +
+                    `请输入质量代码:`,
+                    '80'
+                );
+                
+                if (quality !== null) {
+                    const qualityNum = parseInt(quality);
+                    if ([16, 32, 64, 80, 112].includes(qualityNum)) {
+                        handleDownloadVideo(video, qualityNum);
+                    } else {
+                        alert('无效的质量代码！');
+                    }
+                }
+            };
+
+            return (
+                <div className="min-h-screen">
+                    <nav className="bg-gradient-to-r from-kawaii-pink to-kawaii-purple shadow-lg">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="flex justify-between h-16 items-center">
+                                <div className="flex items-center space-x-4">
+                                    <a href="/" className="text-white hover:text-kawaii-yellow transition-colors duration-300 font-medium">
+                                        ← 返回首页
+                                    </a>
+                                    <h1 className="text-xl font-bold text-white sparkle">
+                                        {collection ? collection.title : '收藏夹详情'}
+                                    </h1>
+                                </div>
+                                <div className="flex space-x-6">
+                                    <a href="/" className="text-white hover:text-kawaii-yellow transition-colors duration-300 font-medium">
+                                        🏠 首页
+                                    </a>
+                                    <a href="/sync" className="text-white hover:text-kawaii-yellow transition-colors duration-300 font-medium">
+                                        🔄 同步管理
+                                    </a>
+                                    <a href="/tasks" className="text-white hover:text-kawaii-yellow transition-colors duration-300 font-medium">
+                                        🚀 任务管理
+                                    </a>
+                                    <a href="/stats" className="text-white hover:text-kawaii-yellow transition-colors duration-300 font-medium">
+                                        📊 统计信息
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </nav>
+
+                    <div className="max-w-7xl mx-auto px-4 py-8">
+                        {collection && (
+                            <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl p-6 mb-8 border border-pink-200">
+                                <div className="flex items-center space-x-4">
+                                    <div className="text-4xl">📁</div>
+                                    <div>
+                                        <h2 className="text-2xl font-bold bg-gradient-to-r from-pink-500 via-purple-500 to-blue-500 bg-clip-text text-transparent">
+                                            {collection.title}
+                                        </h2>
+                                        <p className="text-gray-600">
+                                            B站ID: {collection.bilibili_fid} | 共 {collection.media_count || 0} 个视频
+                                            {pagination.total > 0 && (
+                                                <span className="ml-2">
+                                                    | 当前第 {pagination.page} 页，共 {pagination.total_pages} 页
+                                                </span>
+                                            )}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 mb-8 border border-pink-200">
+                            <div className="flex flex-col sm:flex-row gap-4">
+                                <div className="flex-1">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">🔍 搜索视频标题</label>
+                                    <input
+                                        type="text"
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        onKeyPress={handleKeyPress}
+                                        placeholder="输入关键词搜索..."
+                                        className="w-full px-4 py-3 border border-pink-200 rounded-xl focus:ring-2 focus:ring-kawaii-purple focus:border-transparent transition-all duration-300"
+                                    />
+                                </div>
+                                <div className="sm:w-48">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">📊 状态筛选</label>
+                                    <select
+                                        value={statusFilter}
+                                        onChange={(e) => setStatusFilter(e.target.value)}
+                                        className="w-full px-4 py-3 border border-pink-200 rounded-xl focus:ring-2 focus:ring-kawaii-purple focus:border-transparent transition-all duration-300"
+                                    >
+                                        <option value="all">所有状态</option>
+                                        <option value="available">✅ 有效视频</option>
+                                        <option value="deleted">❌ 已失效</option>
+                                    </select>
+                                </div>
+                                <div className="sm:w-32 flex items-end">
+                                    <button
+                                        onClick={handleSearch}
+                                        className="w-full bg-gradient-to-r from-kawaii-pink to-kawaii-purple text-white font-medium py-3 px-6 rounded-xl hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1"
+                                    >
+                                        🔍 筛选
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl p-8 border border-pink-200">
+                            {loading && (
+                                <div className="text-center py-16">
+                                    <div className="inline-block animate-spin rounded-full h-16 w-16 border-4 border-kawaii-pink border-t-transparent mb-4"></div>
+                                    <p className="text-kawaii-purple font-medium text-lg">正在加载视频中... 🌟</p>
+                                </div>
+                            )}
+
+                            {error && (
+                                <div className="text-center py-16">
+                                    <div className="text-6xl mb-4">😿</div>
+                                    <p className="text-red-500 font-medium text-lg mb-4">
+                                        加载视频失败: {error}
+                                    </p>
+                                    <p className="text-gray-500">
+                                        请检查API服务和数据库连接 🔧
+                                    </p>
+                                </div>
+                            )}
+
+                            {!loading && !error && videos.length === 0 && (
+                                <div className="text-center py-16">
+                                    <div className="text-6xl mb-4">📺</div>
+                                    <p className="text-gray-500 font-medium text-lg mb-4">
+                                        没有找到符合条件的视频
+                                    </p>
+                                    <p className="text-gray-400">
+                                        试试调整搜索条件或筛选器 💫
+                                    </p>
+                                </div>
+                            )}
+
+                            {!loading && !error && videos.length > 0 && (
+                                <>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                        {videos.map((video) => (
+                                            <div
+                                                key={video.bvid}
+                                                className={`group relative bg-gradient-to-br from-white to-pink-50 rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-pink-100 ${
+                                                    video.is_deleted ? 'opacity-75' : ''
+                                                }`}
+                                            >
+                                                <div className="relative aspect-video overflow-hidden">
+                                                    <img
+                                                        src={video.local_cover_path ? 
+                                                            `/covers/${video.local_cover_path.split('/').pop().split('\\').pop()}` : 
+                                                            '/static/nocover.webp'
+                                                        }
+                                                        alt={video.title}
+                                                        className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 ${
+                                                            video.is_deleted ? 'grayscale' : ''
+                                                        }`}
+                                                        onError={(e) => {
+                                                            e.target.src = '/static/load_failed.webp';
+                                                        }}
+                                                    />
+                                                    
+                                                    {/* 视频时长显示在右下角 */}
+                                                    {video.duration && (
+                                                        <div className="absolute bottom-2 right-2 bg-black/75 text-white text-xs font-medium px-2 py-1 rounded-md">
+                                                            {formatDuration(video.duration)}
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {video.is_deleted && (
+                                                        <div className="absolute inset-0 bg-red-500/20 flex items-center justify-center">
+                                                            <span className="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-medium">
+                                                                ❌ 已失效
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <div className="p-4">
+                                                    <h3 className={`font-bold text-sm text-gray-800 mb-2 line-clamp-2 group-hover:text-kawaii-purple transition-colors duration-300 ${
+                                                        video.is_deleted ? 'line-through text-gray-400' : ''
+                                                    }`}>
+                                                        {video.title}
+                                                    </h3>
+                                                    
+                                                    <div className="space-y-2 text-xs text-gray-600">
+                                                        <div className="flex items-center space-x-1">
+                                                            <span>👤</span>
+                                                            <span>{video.uploader_name || 'N/A'}</span>
+                                                        </div>
+                                                        <div className="flex items-center space-x-1">
+                                                            <span>🆔</span>
+                                                            <span className="font-mono">{video.bvid}</span>
+                                                        </div>
+                                                        <div className="flex items-center space-x-1">
+                                                            <span>💖</span>
+                                                            <span>收藏于: {new Date(video.fav_time * 1000).toLocaleDateString()}</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {!video.is_deleted && (
+                                                        <div className="mt-3 pt-3 border-t border-pink-100">
+                                                            <div className="flex items-center justify-between">
+                                                                <a 
+                                                                    href={`https://www.bilibili.com/video/${video.bvid}`}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="inline-flex items-center space-x-1 text-kawaii-purple hover:text-kawaii-pink transition-colors duration-300 text-sm font-medium"
+                                                                >
+                                                                    <span>🎬</span>
+                                                                    <span>前往观看</span>
+                                                                </a>
+                                                                <button
+                                                                    onClick={() => showDownloadOptions(video)}
+                                                                    className="inline-flex items-center space-x-1 bg-gradient-to-r from-kawaii-blue to-kawaii-mint text-white hover:from-kawaii-mint hover:to-kawaii-blue transition-all duration-300 text-xs font-medium px-3 py-1 rounded-lg transform hover:scale-105"
+                                                                    title="下载此视频"
+                                                                >
+                                                                    <span>⬇️</span>
+                                                                    <span>下载</span>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* 使用重构后的分页组件，通过props传递数据 */}
+                                    <PaginationComponent 
+                                        currentPage={pagination.page}
+                                        totalPages={pagination.total_pages}
+                                        onPageChange={handlePageChange}
+                                    />
+                                </>
+                            )}
+                        </div>
+
+                        <div className="text-center mt-12 text-gray-500">
+                            <p className="heart">
+                                Made with love for anime lovers 💖
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>

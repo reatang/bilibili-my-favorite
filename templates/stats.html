@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 统计信息 📊</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/task-indicator.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'kawaii-pink': '#FFB7D1',
+                        'kawaii-purple': '#C8A8E9',
+                        'kawaii-blue': '#A8D8EA',
+                        'kawaii-yellow': '#FFFACD',
+                        'kawaii-mint': '#B8E6B8',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap');
+        * {
+            font-family: 'Noto Sans SC', sans-serif;
+        }
+        body {
+            background: linear-gradient(135deg, #FFE4E6 0%, #E8D5FF 50%, #D1E7FF 100%);
+            min-height: 100vh;
+        }
+        .sparkle::before {
+            content: '✨';
+            animation: pulse 2s infinite;
+        }
+        .heart::before {
+            content: '💖';
+            animation: pulse 1.5s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <!-- 全局任务状态指示器容器 -->
+    <div id="task-indicator-container"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        function App() {
+            const [stats, setStats] = useState(null);
+            const [collections, setCollections] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+
+            useEffect(() => {
+                loadData();
+            }, []);
+
+            const loadData = async () => {
+                try {
+                    setLoading(true);
+                    
+                    // 并行加载统计数据和收藏夹数据
+                    const [statsResponse, collectionsResponse] = await Promise.all([
+                        fetch('/api/stats'),
+                        fetch('/api/collections')
+                    ]);
+
+                    if (!statsResponse.ok || !collectionsResponse.ok) {
+                        throw new Error('Failed to fetch data');
+                    }
+
+                    const [statsData, collectionsData] = await Promise.all([
+                        statsResponse.json(),
+                        collectionsResponse.json()
+                    ]);
+
+                    setStats(statsData);
+                    setCollections(collectionsData);
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center">
+                        <div className="text-center">
+                            <div className="inline-block animate-spin rounded-full h-16 w-16 border-4 border-kawaii-pink border-t-transparent mb-4"></div>
+                            <p className="text-kawaii-purple font-medium text-lg">正在加载统计信息... 🌟</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (error) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center">
+                        <div className="text-center">
+                            <div className="text-6xl mb-4">😿</div>
+                            <p className="text-red-500 font-medium text-lg mb-4">
+                                加载统计信息失败: {error}
+                            </p>
+                            <button 
+                                onClick={loadData}
+                                className="bg-gradient-to-r from-kawaii-pink to-kawaii-purple text-white px-6 py-3 rounded-xl hover:shadow-lg transition-all"
+                            >
+                                🔄 重试
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen">
+                    {/* 可爱的导航栏 */}
+                    <nav className="bg-gradient-to-r from-kawaii-pink to-kawaii-purple shadow-lg">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="flex justify-between h-16 items-center">
+                                <div className="flex items-center space-x-4">
+                                    <h1 className="text-2xl font-bold text-white sparkle">
+                                        📊 统计信息
+                                    </h1>
+                                </div>
+                                <div className="flex space-x-6">
+                                    <a href="/" className="text-white hover:text-kawaii-yellow transition-colors duration-300 font-medium">
+                                        🏠 首页
+                                    </a>
+                                    <a href="/sync" className="text-white hover:text-kawaii-yellow transition-colors duration-300 font-medium">
+                                        🔄 同步管理
+                                    </a>
+                                    <a href="/tasks" className="text-white hover:text-kawaii-yellow transition-colors duration-300 font-medium">
+                                        🚀 任务管理
+                                    </a>
+                                    <a href="/stats" className="text-kawaii-yellow font-medium">
+                                        📊 统计信息
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </nav>
+
+                    <div className="max-w-7xl mx-auto px-4 py-8">
+                        {/* 可爱的标题 */}
+                        <div className="text-center mb-12">
+                            <h2 className="text-4xl font-bold bg-gradient-to-r from-pink-500 via-purple-500 to-blue-500 bg-clip-text text-transparent mb-4">
+                                数据统计中心 📊
+                            </h2>
+                            <p className="text-gray-600 text-lg">
+                                一目了然的收藏夹数据概览~ ✨
+                            </p>
+                        </div>
+
+                        {/* 整体统计卡片 */}
+                        {stats && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+                                <div className="bg-gradient-to-br from-kawaii-pink/20 to-kawaii-purple/20 rounded-3xl p-6 text-center border border-pink-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+                                    <div className="text-4xl mb-3">📁</div>
+                                    <div className="text-3xl font-bold text-gray-800 mb-2">{stats.total_collections || 0}</div>
+                                    <div className="text-sm text-gray-600 font-medium">收藏夹总数</div>
+                                </div>
+
+                                <div className="bg-gradient-to-br from-kawaii-blue/20 to-kawaii-mint/20 rounded-3xl p-6 text-center border border-blue-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+                                    <div className="text-4xl mb-3">🎬</div>
+                                    <div className="text-3xl font-bold text-gray-800 mb-2">{stats.total_videos || 0}</div>
+                                    <div className="text-sm text-gray-600 font-medium">视频总数</div>
+                                </div>
+
+                                <div className="bg-gradient-to-br from-kawaii-mint/20 to-kawaii-yellow/20 rounded-3xl p-6 text-center border border-green-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+                                    <div className="text-4xl mb-3">✅</div>
+                                    <div className="text-3xl font-bold text-gray-800 mb-2">{stats.available_videos || 0}</div>
+                                    <div className="text-sm text-gray-600 font-medium">可用视频</div>
+                                </div>
+
+                                <div className="bg-gradient-to-br from-red-200/20 to-red-300/20 rounded-3xl p-6 text-center border border-red-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+                                    <div className="text-4xl mb-3">❌</div>
+                                    <div className="text-3xl font-bold text-gray-800 mb-2">{stats.deleted_videos || 0}</div>
+                                    <div className="text-sm text-gray-600 font-medium">已删除视频</div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 收藏夹详细信息 */}
+                        <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl p-8 border border-pink-200">
+                            <div className="flex items-center space-x-3 mb-8">
+                                <div className="text-3xl">📋</div>
+                                <h3 className="text-2xl font-bold text-gray-800">收藏夹详情</h3>
+                            </div>
+
+                            {collections.length === 0 ? (
+                                <div className="text-center py-16">
+                                    <div className="text-6xl mb-4">📚</div>
+                                    <p className="text-gray-500 font-medium text-lg">
+                                        还没有收藏夹数据呢~
+                                    </p>
+                                    <p className="text-gray-400 mt-2">
+                                        请先进行同步操作来获取数据 💫
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        {collections.map((collection) => (
+                                            <div
+                                                key={collection.id}
+                                                className="bg-gradient-to-br from-white to-pink-50 rounded-2xl p-6 border border-pink-100 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1"
+                                            >
+                                                <div className="flex items-start justify-between mb-4">
+                                                    <div className="flex-1">
+                                                        <a 
+                                                            href={`/collections/${collection.id}`}
+                                                            className="text-lg font-bold text-gray-800 hover:text-kawaii-purple transition-colors duration-300 line-clamp-2"
+                                                        >
+                                                            {collection.title}
+                                                        </a>
+                                                        <p className="text-sm text-gray-500 mt-1">
+                                                            B站ID: {collection.bilibili_fid}
+                                                        </p>
+                                                    </div>
+                                                    <div className="text-2xl ml-4">📁</div>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="bg-kawaii-mint/30 rounded-xl p-3 text-center">
+                                                        <div className="text-xl font-bold text-gray-800">{collection.media_count || 0}</div>
+                                                        <div className="text-xs text-gray-600">视频数量</div>
+                                                    </div>
+                                                    <div className="bg-kawaii-blue/30 rounded-xl p-3 text-center">
+                                                        <div className="text-sm font-medium text-gray-700">
+                                                            {collection.last_synced 
+                                                                ? new Date(collection.last_synced).toLocaleDateString('zh-CN')
+                                                                : '未同步'
+                                                            }
+                                                        </div>
+                                                        <div className="text-xs text-gray-600">最后同步</div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-4 pt-4 border-t border-pink-100">
+                                                    <a 
+                                                        href={`/collections/${collection.id}`}
+                                                        className="inline-flex items-center space-x-2 text-kawaii-purple hover:text-kawaii-pink transition-colors duration-300 text-sm font-medium"
+                                                    >
+                                                        <span>🎬</span>
+                                                        <span>查看视频列表</span>
+                                                        <span>→</span>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 可爱的页脚 */}
+                        <div className="text-center mt-12 text-gray-500">
+                            <p className="heart">
+                                Made with love for anime lovers 
+                            </p>
+                    </div>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html> 

@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔄 同步管理 🔄</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/task-indicator.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'kawaii-pink': '#FFB7D1',
+                        'kawaii-purple': '#C8A8E9',
+                        'kawaii-blue': '#A8D8EA',
+                        'kawaii-yellow': '#FFFACD',
+                        'kawaii-mint': '#B8E6B8',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap');
+        * {
+            font-family: 'Noto Sans SC', sans-serif;
+        }
+        body {
+            background: linear-gradient(135deg, #FFE4E6 0%, #E8D5FF 50%, #D1E7FF 100%);
+            min-height: 100vh;
+        }
+        .sparkle::before {
+            content: '✨';
+            animation: pulse 2s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <!-- 全局任务状态指示器容器 -->
+    <div id="task-indicator-container"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        function App() {
+            const [collections, setCollections] = useState([]);
+            const [selectedCollectionId, setSelectedCollectionId] = useState('');
+            const [forceDownload, setForceDownload] = useState(false);
+            const [isLoading, setIsLoading] = useState(false);
+            const [status, setStatus] = useState(null);
+            const [result, setResult] = useState(null);
+            const [collectionsLoading, setCollectionsLoading] = useState(true);
+
+            useEffect(() => {
+                fetchCollections();
+            }, []);
+
+            const fetchCollections = async () => {
+                try {
+                    setCollectionsLoading(true);
+                    const response = await fetch('/api/collections');
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    const data = await response.json();
+                    setCollections(data);
+                } catch (error) {
+                    console.error('获取收藏夹列表失败:', error);
+                } finally {
+                    setCollectionsLoading(false);
+                }
+            };
+
+            const startSync = async () => {
+                if (!selectedCollectionId) {
+                    setStatus({ type: 'error', message: '请选择要同步的收藏夹 📁' });
+                    return;
+                }
+
+                setIsLoading(true);
+                setStatus({ type: 'info', message: '正在启动同步任务... 🚀' });
+                setResult(null);
+
+                try {
+                    const requestBody = {
+                        collection_id: selectedCollectionId,
+                        force_download_covers: forceDownload
+                    };
+
+                    const response = await fetch('/api/sync', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(requestBody)
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || `HTTP ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    setStatus({ type: 'success', message: '同步完成！✨' });
+                    setResult(data);
+                } catch (error) {
+                    setStatus({ type: 'error', message: `同步失败: ${error.message} 😿` });
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            return (
+                <div className="min-h-screen">
+                    {/* 导航栏 */}
+                    <nav className="bg-gradient-to-r from-kawaii-pink to-kawaii-purple shadow-lg">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="flex justify-between h-16 items-center">
+                                <h1 className="text-2xl font-bold text-white sparkle">
+                                    🔄 同步管理
+                                </h1>
+                                <div className="flex space-x-6">
+                                    <a href="/" className="text-white hover:text-kawaii-yellow transition-colors font-medium">
+                                        🏠 首页
+                                    </a>
+                                    <a href="/sync" className="text-white hover:text-kawaii-yellow transition-colors font-medium">
+                                        🔄 同步管理
+                                    </a>
+                                    <a href="/tasks" className="text-white hover:text-kawaii-yellow transition-colors font-medium">
+                                        🚀 任务管理
+                                    </a>
+                                    <a href="/stats" className="text-white hover:text-kawaii-yellow transition-colors font-medium">
+                                        📊 统计信息
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </nav>
+
+                    <div className="max-w-4xl mx-auto px-4 py-8">
+                        {/* 标题 */}
+                        <div className="text-center mb-12">
+                            <h2 className="text-4xl font-bold bg-gradient-to-r from-pink-500 via-purple-500 to-blue-500 bg-clip-text text-transparent mb-4">
+                                收藏夹同步中心 🌟
+                            </h2>
+                            <p className="text-gray-600 text-lg">
+                                选择单个收藏夹进行安全同步~ ✨
+                            </p>
+                            <div className="mt-4 bg-blue-50 border border-blue-200 rounded-2xl p-4">
+                                <p className="text-blue-700 text-sm">
+                                    💡 为了避免网络超时，暂时只支持单个收藏夹同步功能
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* 同步配置 */}
+                        <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl p-8 mb-8 border border-pink-200">
+                            <div className="space-y-6">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                                        📁 选择收藏夹 <span className="text-red-500">*</span>
+                                    </label>
+                                    {collectionsLoading ? (
+                                        <div className="flex items-center justify-center py-4">
+                                            <div className="animate-spin rounded-full h-6 w-6 border-2 border-kawaii-pink border-t-transparent mr-2"></div>
+                                            <span className="text-gray-500">正在加载收藏夹列表...</span>
+                                        </div>
+                                    ) : (
+                                        <select
+                                            value={selectedCollectionId}
+                                            onChange={(e) => setSelectedCollectionId(e.target.value)}
+                                            className="w-full px-4 py-3 border border-pink-200 rounded-xl focus:ring-2 focus:ring-kawaii-purple"
+                                            disabled={isLoading}
+                                        >
+                                            <option value="">请选择要同步的收藏夹</option>
+                                            {collections.map((collection) => (
+                                                <option key={collection.id} value={collection.bilibili_fid}>
+                                                    {collection.title} (ID: {collection.bilibili_fid}) - {collection.media_count || 0}个视频
+                                                </option>
+                                            ))}
+                                        </select>
+                                    )}
+                                    <p className="text-sm text-gray-500 mt-2">
+                                        💡 选择一个收藏夹进行同步，全量同步功能暂时不可用
+                                    </p>
+                                </div>
+
+                                <label className="flex items-center space-x-3 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={forceDownload}
+                                        onChange={(e) => setForceDownload(e.target.checked)}
+                                        className="w-5 h-5 text-kawaii-purple"
+                                        disabled={isLoading}
+                                    />
+                                    <span className="text-gray-700 font-medium">
+                                        🖼️ 强制重新下载封面图片
+                                    </span>
+                                </label>
+
+                                <button
+                                    onClick={startSync}
+                                    disabled={isLoading || !selectedCollectionId || collectionsLoading}
+                                    className={`w-full py-4 px-6 rounded-xl font-bold text-lg transition-all ${
+                                        isLoading || !selectedCollectionId || collectionsLoading
+                                            ? 'bg-gray-300 cursor-not-allowed'
+                                            : 'bg-gradient-to-r from-kawaii-pink to-kawaii-purple text-white hover:shadow-xl'
+                                    }`}
+                                >
+                                    {isLoading ? (
+                                        <div className="flex items-center justify-center space-x-2">
+                                            <div className="animate-spin rounded-full h-6 w-6 border-2 border-white border-t-transparent"></div>
+                                            <span>同步中...</span>
+                                        </div>
+                                    ) : (
+                                        '🚀 开始同步'
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* 状态 */}
+                        {status && (
+                            <div className="mb-8">
+                                <div className={`p-4 rounded-2xl border-2 ${
+                                    status.type === 'success' 
+                                        ? 'bg-green-50 border-green-200 text-green-800'
+                                        : status.type === 'error'
+                                        ? 'bg-red-50 border-red-200 text-red-800'
+                                        : 'bg-blue-50 border-blue-200 text-blue-800'
+                                }`}>
+                                    <p className="font-medium text-center text-lg">
+                                        {status.message}
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 结果 */}
+                        {result && (
+                            <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl p-8 border border-pink-200">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-xl font-bold text-gray-800">📊 同步结果</h3>
+                                    {selectedCollectionId && (
+                                        <a 
+                                            href={`/collections/${collections.find(c => c.bilibili_fid === selectedCollectionId)?.id}`}
+                                            className="inline-flex items-center space-x-2 bg-gradient-to-r from-kawaii-blue to-kawaii-purple text-white px-4 py-2 rounded-xl hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1"
+                                        >
+                                            <span>📁</span>
+                                            <span>跳转到收藏夹</span>
+                                        </a>
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                                    <div className="bg-gradient-to-br from-kawaii-mint/30 to-kawaii-blue/30 rounded-2xl p-4 text-center">
+                                        <div className="text-2xl mb-2">📁</div>
+                                        <div className="text-2xl font-bold">{result.collections_processed || 1}</div>
+                                        <div className="text-sm text-gray-600">处理的收藏夹</div>
+                                    </div>
+                                    <div className="bg-gradient-to-br from-kawaii-pink/30 to-kawaii-purple/30 rounded-2xl p-4 text-center">
+                                        <div className="text-2xl mb-2">➕</div>
+                                        <div className="text-2xl font-bold">{result.videos_added || 0}</div>
+                                        <div className="text-sm text-gray-600">新增视频</div>
+                                    </div>
+                                    <div className="bg-gradient-to-br from-kawaii-yellow/30 to-kawaii-mint/30 rounded-2xl p-4 text-center">
+                                        <div className="text-2xl mb-2">🔄</div>
+                                        <div className="text-2xl font-bold">{result.videos_updated || 0}</div>
+                                        <div className="text-sm text-gray-600">更新视频</div>
+                                    </div>
+                                    <div className="bg-gradient-to-br from-red-200/30 to-red-300/30 rounded-2xl p-4 text-center">
+                                        <div className="text-2xl mb-2">🗑️</div>
+                                        <div className="text-2xl font-bold">{result.videos_deleted || 0}</div>
+                                        <div className="text-sm text-gray-600">删除视频</div>
+                                    </div>
+                                    <div className="bg-gradient-to-br from-kawaii-blue/30 to-kawaii-purple/30 rounded-2xl p-4 text-center">
+                                        <div className="text-2xl mb-2">🖼️</div>
+                                        <div className="text-2xl font-bold">{result.covers_downloaded || 0}</div>
+                                        <div className="text-sm text-gray-600">下载封面</div>
+                                    </div>
+                                    {result.errors && result.errors.length > 0 && (
+                                        <div className="bg-gradient-to-br from-orange-200/30 to-red-200/30 rounded-2xl p-4 text-center">
+                                            <div className="text-2xl mb-2">⚠️</div>
+                                            <div className="text-2xl font-bold">{result.errors.length}</div>
+                                            <div className="text-sm text-gray-600">错误数量</div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {result.errors && result.errors.length > 0 && (
+                                    <div className="mt-6">
+                                        <h4 className="font-bold text-red-600 mb-3">❌ 错误详情：</h4>
+                                        <div className="bg-red-50 rounded-2xl p-4 max-h-40 overflow-y-auto">
+                                            <ul className="text-sm text-red-700 space-y-1">
+                                                {result.errors.map((error, index) => (
+                                                    <li key={index} className="flex items-start space-x-2">
+                                                        <span className="text-red-500 mt-1">•</span>
+                                                        <span>{error}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* 可爱的页脚 */}
+                        <div className="text-center mt-12 text-gray-500">
+                            <p className="heart">
+                                Made with love for anime lovers 💖
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html> 
